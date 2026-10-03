@@ -64,3 +64,13 @@ Claude (technical):
 - **Uploads** go straight into a "Social Studio" folder in the shop's Boutiqly media storage (100 MB per file); the database keeps only the address.
 - **This week** on the Calendar is a rolling seven days from today, so posts coming up always show.
 
+
+## Oct 3, 2026 (later): drafts and branding
+
+Katy:
+- **Test the connection with drafts.** A "Send to Boutiqly as a draft" button on Calendar entries that Boutiqly posts (or pings) creates the post in the shop's Boutiqly social planner as a draft. Drafts never publish, so it works with Live posting off. Katy OK'd drafts in Girl Riot Society when she clicks the button.
+- **Each shop keeps its own look** (as in the scope). Style sets come from each shop's approved brand board, with the basic Boutiqly look (no logo) until then. **No port of the Make Space prototype's content engine or brand docs**, so Katy doesn't need to send them. Milestone 3 and 4 plans updated to match.
+
+Claude (technical):
+- Draft ids are stored apart from real post ids (`planner_draft_ids`), one per Story frame, saved as they come back so a retry only sends the missing frames. Sending a draft never changes the entry's status or blocks Approve.
+- When Boutiqly refuses a post, the server log keeps its reply (trimmed, never our token), so a wrong field can be fixed from Render's logs.

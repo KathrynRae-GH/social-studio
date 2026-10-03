@@ -205,7 +205,7 @@ Full Reels plus custom styles for every brand roughly doubles the build before a
 
 1. **Time to testing.** The original brief's 3–6 weeks assumed no Reels. With Reels, per-brand style sets, brand capture, every channel and wallet billing it's about 10 weeks of build, so client testing starts around Dec 21 (estimate).
 2. **Holiday timing.** Testing lands in the busiest weeks for shops (Small Business Saturday is Nov 28). Katy's own brands test first; check that Bella and Brawn and Blue Bare can give quick feedback in December.
-3. **Reels on a server** is where surprises are most likely: fonts, video codecs, render time. Port Make Space's styles first and compare each server render side by side with today's.
+3. **Reels on a server** is where surprises are most likely: fonts, video codecs, render time. Build the Reel styles fresh on the server (Katy decided Oct 3 not to port the Make Space prototype's engine) and check early renders for fonts, codecs and render time.
 4. **The phone app is unconfirmed.** Boutiqly users are on the LeadConnector app today, so whether the tab shows on phones depends on what that app allows, and nothing public confirms it shows custom tabs. Reels and Stories already go out from the phone through app pings, but approving and uploading on the phone depend on it. Test it on day one in Make Space's sub-account; the fallback, a phone-friendly link with its own sign-in, is extra work.
 5. **Claude costs grow with use.** Meter every brand from day one and test wallet billing before any client connects.
 6. **Custom styles cost people time** only when a brand wants something the engine can't do. Building each brand's styles as its own code would make every brand a separate thing to maintain; the shared engine avoids that.

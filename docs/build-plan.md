@@ -28,17 +28,17 @@ Milestones in order. Each ends with something Katy can open and try. Dates are t
 ## M3. Posts, Stories, Assets and Ask Claude (Oct 26 – Nov 20)
 
 - Worker and jobs table; HTML/CSS/SVG rendering through headless Chromium at every channel's size; carousels and Story sets.
-- Style sets as data on the unbranded engine; Make Space's set ported first; the default Boutiqly fallback look (palette and type only, no logo).
+- Style sets as data on the unbranded engine, each built from the shop's approved brand board (no port of the Make Space prototype's engine or brand docs; decided Oct 3); the default Boutiqly fallback look (palette and type only, no logo) until a board is approved.
 - Assets: upload and pick from media storage, Claude tagging, people rules, sensitive-details flags with crop/blur.
 - Ask Claude on Opus 5.5: tools for the library, calendar, design and render, web search, images; one-tap apply.
 - Usage ledger: every Claude call metered per job, user and sub-account.
-- **Done when:** Katy asks Ask Claude for a carousel in Make Space's look, gets it rendered in the tab, edits it in chat, and approves it to the calendar.
+- **Done when:** Katy asks Ask Claude for a carousel in a test shop's own look (or the Boutiqly fallback before its board is approved), gets it rendered in the tab, edits it in chat, and approves it to the calendar.
 
 ## M4. Reels (Nov 9 – Dec 4)
 
-- Video rendering with ffmpeg on the worker; Make Space's 16 Reel styles ported as unbranded structures plus Make Space's set; silent audio track; posters; Shorts.
+- Video rendering with ffmpeg on the worker; Reel styles built fresh as unbranded structures that take each shop's style set; silent audio track; posters; Shorts.
 - Preview player in the tab; "change this" re-renders.
-- **Done when:** server renders of Make Space's Reels match or beat today's, side by side.
+- **Done when:** a test shop gets Reels in its own look that Katy would post.
 
 ## M5. Brand capture, onboarding and Team (Nov 23 – Dec 11)
 

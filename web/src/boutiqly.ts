@@ -1,6 +1,6 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { Me, TeamEntry } from "../../shared/roles.ts";
-import type { ApproveResult, AccountView, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { ApproveResult, DraftResult, AccountView, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 
 interface MessageSource {
   postMessage(message: unknown, targetOrigin: string): void;
@@ -115,6 +115,7 @@ export const api = {
     call<{ entry: EntryView }>(`/api/calendar/${id}`, { method: "PATCH", body: JSON.stringify({ date, time }) }),
   unschedule: (id: string) => call<{ ok: true }>(`/api/calendar/${id}`, { method: "DELETE" }),
   approve: (id: string) => call<ApproveResult>(`/api/calendar/${id}/approve`, { method: "POST", body: "{}" }),
+  sendDraft: (id: string) => call<DraftResult>(`/api/calendar/${id}/draft`, { method: "POST", body: "{}" }),
   markPosted: (id: string) => call<{ entry: EntryView }>(`/api/calendar/${id}/posted`, { method: "POST", body: "{}" }),
   accounts: () => call<{ accounts: AccountView[] | null }>("/api/accounts"),
   setLivePosting: (on: boolean) =>

@@ -11,6 +11,7 @@ import { addAsset, createPiece, deleteIdea, getPiece, listIdeas, listPieces, sav
 import {
   addEntries,
   approveEntry,
+  sendDraft,
   brandTimezone,
   entryForPack,
   getCalendar,
@@ -103,6 +104,9 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
   });
   app.post<{ Params: { id: string } }>("/api/calendar/:id/approve", async (req) =>
     approveEntry(calendar, await viewerFrom(req), req.params.id),
+  );
+  app.post<{ Params: { id: string } }>("/api/calendar/:id/draft", async (req) =>
+    sendDraft(calendar, await viewerFrom(req), req.params.id),
   );
   app.post<{ Params: { id: string } }>("/api/calendar/:id/posted", async (req) => ({
     entry: await markPosted(calendar, await viewerFrom(req), req.params.id),

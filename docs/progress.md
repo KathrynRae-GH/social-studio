@@ -2,6 +2,16 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 3, 2026 (evening): "Send to Boutiqly as a draft"
+
+- Done:
+  - Calendar entries that Boutiqly posts or pings now have a **Send to Boutiqly as a draft** button. It makes the post in the shop's Boutiqly social planner as a draft (one per Story frame). Drafts never post, the entry's status doesn't change, and it works with Live posting off. A second click sends nothing.
+  - If Boutiqly refuses, the tab shows Boutiqly's own message and the server log keeps the details for fixing.
+  - Branding decided: each shop keeps its own look; no port of the Make Space prototype's engine or brand docs. Build plan updated.
+  - 88 automated tests (83 server, 2 web, 5 worker); the button clicked through in a browser against the stand-in.
+- Next: Katy tests a draft in Girl Riot Society (steps in chat). That's the first real call to Boutiqly's planner and media upload, so it confirms the post format and upload fields. Then the real test posts with Live posting on, then Milestone 3.
+- Waiting on Katy: the Girl Riot draft test; the test Instagram for real posts; the two Milestone 1 checks; the live scope doc owner rule.
+
 ## Oct 3, 2026 (later): Milestone 2 built
 
 - Done (all in one go, merged by Claude once checks passed, as Katy asked):

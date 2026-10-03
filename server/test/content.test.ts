@@ -193,6 +193,68 @@ describe("approve while live posting is off", () => {
   });
 });
 
+const draft = (id: string, headers = agency.headers) => t.app.inject({ method: "POST", url: `/api/calendar/${id}/draft`, headers });
+
+describe("send to Boutiqly as a draft", () => {
+  it("makes a draft in the planner while live posting is off, without changing the entry's status", async () => {
+    const a = await upload();
+    const id = await piece("post", [a.id], { instagram: "Fall sale Saturday" });
+    const [entry] = await schedule(id, ["instagram"]);
+    const res = await draft(entry!.id);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ alreadySent: false, entry: { status: "suggested", draftsSent: 1, sentFrames: 0 } });
+    expect(res.json().entry.draftSentAt).toBeTruthy();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body).toMatchObject({ accountIds: ["acc_ig"], status: "draft", summary: "Fall sale Saturday", type: "post" });
+    const log = await t.pool.query("SELECT action FROM audit_log WHERE action LIKE 'calendar.send_draft%'");
+    expect(log.rows).toEqual([{ action: "calendar.send_draft" }]);
+  });
+
+  it("sends nothing on a second click", async () => {
+    const id = await piece("text", [], { threads: "hi" });
+    const [entry] = await schedule(id, ["threads"]);
+    await draft(entry!.id);
+    const again = await draft(entry!.id);
+    expect(again.json().alreadySent).toBe(true);
+    expect(posts).toHaveLength(1);
+  });
+
+  it("makes one draft per Story frame and only resends the missing ones", async () => {
+    const frames = [await upload("1.jpg"), await upload("2.jpg"), await upload("3.jpg")];
+    const id = await piece("story_set", frames.map((f) => f.id));
+    const [entry] = await schedule(id, ["instagram"]);
+    failPostNumber = 2;
+    const first = await draft(entry!.id);
+    expect(first.statusCode).toBe(502);
+    expect(first.json().error).toBe("Frame 2 of 3 didn't go through. Boutiqly said: Instagram is busy, try again");
+    const second = await draft(entry!.id);
+    expect(second.json().entry).toMatchObject({ draftsSent: 3, status: "suggested", lastError: null });
+    expect(posts).toHaveLength(3);
+    expect(posts.every((p) => p.body.status === "draft")).toBe(true);
+  });
+
+  it("leaves Approve working as before afterwards", async () => {
+    const id = await piece("text", [], { threads: "hi" });
+    const [entry] = await schedule(id, ["threads"]);
+    await draft(entry!.id);
+    const res = await approve(entry!.id);
+    expect(res.json().entry).toMatchObject({ status: "approved", dryRun: true });
+    expect(posts).toHaveLength(1); // just the draft
+  });
+
+  it("refuses packs, other shops and people without access", async () => {
+    const id = await piece("text", [], { x: "hi", threads: "hi" });
+    const [pack, threads] = await schedule(id, ["x", "threads"]);
+    expect(pack!.route).toBe("pack");
+    expect((await draft(pack!.id)).statusCode).toBe(400);
+    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
+    expect((await draft(threads!.id, elsewhere.headers)).statusCode).toBe(404);
+    const other = await signInAs(t.app, people.other);
+    expect((await draft(threads!.id, other.headers)).statusCode).toBe(403);
+    expect(posts).toHaveLength(0);
+  });
+});
+
 describe("live posting", () => {
   it("can only be switched by Boutiqly's team", async () => {
     const owner = await signInAs(t.app, people.owner);
