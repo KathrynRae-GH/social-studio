@@ -1,0 +1,97 @@
+/* Layout and type only. Every color comes from theme.ts as a CSS variable. */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--cream);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+}
+h1 { font-size: 26px; margin: 0 0 16px; }
+h2 { font-size: 19px; margin: 0 0 12px; }
+p { margin: 0 0 12px; }
+a, .btn-link { color: var(--green); }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card.narrow { max-width: 520px; width: 100%; }
+.card.empty { padding: 32px 20px; }
+.centered { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.notice { background: var(--pale-mint); border-radius: 8px; padding: 10px 12px; }
+.error { background: var(--pink); border-radius: 8px; padding: 10px 12px; }
+
+/* Buttons. Orange is only for main actions (Approve, Schedule) with white
+   bold text at 18px or larger. */
+button { font-family: inherit; cursor: pointer; }
+.btn-primary {
+  background: var(--orange); color: var(--white); font-weight: 700; font-size: 18px;
+  border: 0; border-radius: 8px; padding: 10px 20px;
+}
+.btn-secondary {
+  background: transparent; color: var(--text); font-weight: 600; font-size: 15px;
+  border: 1.5px solid var(--deep-forest); border-radius: 8px; padding: 8px 16px;
+}
+.btn-secondary:hover { background: var(--green); border-color: var(--green); color: var(--white); }
+.btn-secondary.small { font-size: 13px; padding: 4px 10px; }
+.btn-link { background: none; border: 0; padding: 4px; text-decoration: underline; font-size: 13px; }
+
+/* Shell */
+.shell { min-height: 100vh; }
+.topbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; background: var(--card); border-bottom: 1px solid var(--border);
+}
+.brand-name { display: flex; flex-direction: column; }
+.brand-name strong { font-size: 18px; }
+.brand-name .muted { font-size: 13px; }
+.who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 600; }
+.role-chip {
+  display: inline-block; border-radius: 999px; padding: 2px 12px; font-size: 13px; font-weight: 600;
+  background: var(--pale-mint); color: var(--text); white-space: nowrap;
+}
+.role-boutiqly_team { background: var(--light-blue); }
+.role-owner { background: var(--sage); }
+.role-team { background: var(--pale-mint); }
+.role-requested { background: var(--pink); }
+
+.tabs {
+  display: flex; gap: 4px; padding: 8px 16px; overflow-x: auto;
+  border-bottom: 1px solid var(--border); background: var(--card);
+}
+.tab {
+  background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted);
+  font-weight: 600; font-size: 15px; padding: 8px 10px; white-space: nowrap;
+}
+.tab.active { color: var(--text); border-bottom-color: var(--deep-forest); }
+.tab.ask { margin-left: auto; color: var(--green); }
+@media (max-width: 560px) {
+  .tabs { flex-wrap: wrap; overflow-x: visible; padding: 6px 8px; }
+  .tab { padding: 6px 8px; font-size: 14px; }
+}
+.screen { padding: 20px 16px; max-width: 1100px; margin: 0 auto; }
+
+/* Team list */
+.team-list { list-style: none; margin: 0; padding: 0; }
+.team-list li {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+.team-list li > div:first-child { display: flex; flex-direction: column; flex: 1 1 200px; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Ask Claude panel: a side panel on wide screens, full width on phones */
+.ask-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%);
+  background: var(--card); border-left: 1px solid var(--border); padding: 20px 16px;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.08); overflow-y: auto;
+}
+.ask-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.ask-head h2 { margin: 0; }

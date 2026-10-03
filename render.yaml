@@ -1,0 +1,70 @@
+# Render blueprint: creates the web app, the worker and the database in one go.
+# Secrets marked `sync: false` are typed into Render when the blueprint is
+# applied (Render asks for each one); they never live in this repo.
+# Cost to start: web Starter $7 + worker Standard $25 + Postgres basic ~$6-7.
+
+databases:
+  - name: social-studio-db
+    plan: basic-256mb
+    region: ohio
+    databaseName: social_studio
+    user: social_studio
+    postgresMajorVersion: "16"
+    ipAllowList: [] # reachable only from our own Render services
+
+services:
+  - type: web
+    name: social-studio
+    runtime: node
+    plan: starter
+    region: ohio
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: DATABASE_URL
+        fromDatabase: { name: social-studio-db, property: connectionString }
+      - key: SESSION_SIGNING_KEY
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: BOUTIQLY_APP_ID
+        sync: false
+      - key: BOUTIQLY_CLIENT_ID
+        sync: false
+      - key: BOUTIQLY_CLIENT_SECRET
+        sync: false
+      - key: BOUTIQLY_SHARED_SECRET
+        sync: false
+      - key: BOUTIQLY_APP_DOMAINS
+        sync: false
+      - key: BOUTIQLY_API_BASE
+        value: https://services.leadconnectorhq.com
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-opus-5-5
+      - key: WALLET_BILLING_MODE
+        value: "off"
+      - key: CREDIT_MARKUP
+        value: "2"
+
+  - type: worker
+    name: social-studio-worker
+    runtime: python
+    plan: standard
+    region: ohio
+    branch: main
+    rootDir: worker
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m worker.main
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: DATABASE_URL
+        fromDatabase: { name: social-studio-db, property: connectionString }
