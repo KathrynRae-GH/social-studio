@@ -58,6 +58,8 @@ From the platform's official marketplace app template (its GitHub repo; the deve
   - the platform's cut: its help center (updated Jun 2026) says it takes no commission, while its marketplace page mentions 15%;
   - a developer reported (Jul 2026) that every usage charge from their private app failed with "Billing Usage Failed" on the platform's side. Test billing early with a test charge.
 - Paid marketplace apps get a 30-day grace period with retries when a charge fails.
+- **What the developer portal's Pricing page offered (Oct 3, 2026, Social Studio app, draft version):** Free / Freemium / Paid; pricing plans (subscription or one-time); a free-trial switch; and **Billing meters → Add Meter** (one meter per module). Set to **Paid, no plans, no free trial**: usage only, no monthly fee. No meter yet; it's added together with the first test charge. The page shows **no platform fee**, so the 0% vs 15% question is still open.
+- The app shows "Mandatory steps (1/5)": Basic info, Profile details, Support details, Pricing details (done), Publish. Check whether a private app installs into a sub-account from draft, or needs Publish first.
 
 ## Phone
 

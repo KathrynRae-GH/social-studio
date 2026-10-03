@@ -13,7 +13,8 @@ Newest entry at the top. Every session ends by adding one: what got done, what's
   - `docs/setup-accounts.md` rewritten in the order the steps depend on each other, with exact settings.
 - Not done yet: neither milestone is "done" until it runs on Render and inside Boutiqly. That needs the accounts below.
 - Next: Katy merges the pull request → Render blueprint → register the custom page and install in Social Studio Test → check Katy sees her name and role, a non-team user sees request access, and what the LeadConnector phone app shows. Then Milestone 2.
-- Waiting on Katy (in `docs/setup-accounts.md` order): Boutiqly developer account and app (step 2), Claude API key (step 3), merge the PR then Render (step 4), test sub-account and install (step 5). Also: update the live scope doc with the new owner rule, and tell Claude what the portal's Pricing page says about private-app billing.
+- Katy created the Boutiqly developer account and the Social Studio app; Pricing set to Paid, usage only (see `docs/platform-notes.md`).
+- Waiting on Katy (in `docs/setup-accounts.md` order): Claude API key (step 3), merge the PR then Render (step 4), test sub-account and install (step 5). Also: update the live scope doc with the new owner rule, and tell Claude what the portal's Pricing page says about private-app billing.
 - Risks still open: private-app wallet billing and the platform's cut (0% vs 15%); whether the phone app shows custom tabs; the user-context field names are taken from the official template and get confirmed on the first real sign-in.
 
 ## Oct 3, 2026: scope finished, starter kit added
