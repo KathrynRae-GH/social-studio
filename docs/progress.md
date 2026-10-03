@@ -12,6 +12,7 @@ Newest entry at the top. Every session ends by adding one: what got done, what's
   - **The tab loads inside Boutiqly and shows Katy's name and "Boutiqly team".** Boutiqly's address is `app.boutiqly.io` (needed in `BOUTIQLY_APP_DOMAINS`).
   - Learned: client keys and the Shared Secret live under Manage → Secrets; the Auth page won't save without a Redirect URL.
 - Added after Katy's first look: a "Set up this shop" checklist, the shop's real name at the top, and an "Add someone" picker on Brand → Team that lists the sub-account's Boutiqly users, so agency admins can name owners and staff without them opening the tab first.
+- Then (PR #4): agency admins can be named on a shop's Team list, including as owner, and can name themselves. **Katy confirmed it works live.**
 - Still to check for Milestone 1: a sub-account user who isn't on the Team list sees the request-access screen; whether the tab shows in the LeadConnector phone app.
 - Next: those two checks, then Milestone 2 (Library, Calendar, posting through Boutiqly's social planner).
 - Waiting on Katy: the two checks; update the live scope doc with the new owner rule; Make Space's content engine and brand docs before late October.
