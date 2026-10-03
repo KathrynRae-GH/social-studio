@@ -1,37 +1,62 @@
 # Accounts to set up (Katy)
 
-Five things, in this order. Claude walks you through each one in session 1, so you don't need to do them ahead of time. The one rule: **secret keys go straight into Render's Environment settings, never into chat, a document or an email.** If one ever lands in chat by accident, make a new one and delete the old one.
+In this order, because each step needs something from the one before. The one rule: **secret keys go straight into Render's Environment settings, never into chat, a document or an email.** If one ever lands in chat by accident, make a new one and delete the old one.
 
-## 1. GitHub repository ✅ account exists
+Screen labels in the Boutiqly developer portal and Render change from time to time. If a button isn't where these steps say, tell Claude what you see instead.
 
-- Make a **private** repository called `social-studio` (no README, no template).
-- Add this starter kit to it. Easiest: on the new repo's page, choose "uploading an existing file", drag in everything inside the unzipped `social-studio-starter` folder (the files and folders, not the folder itself), and commit. A Mac hides the two files whose names start with a dot (`.gitignore`, `.env.example`); if they don't come along, Claude adds them in session 1.
-- Then open Claude Code (web or desktop), pick the `social-studio` repository, and paste the prompt from `FIRST-SESSION-PROMPT.md`.
+## 1. GitHub repository ✅ done Oct 3
 
-## 2. Boutiqly developer account and the private app
+Private repo `social-studio` with the starter kit in it.
 
-- Sign up for the developer portal with the **Boutiqly agency login** (the portal link is in `docs/platform-notes.md`).
-- Create the app as **Private**, for sub-accounts, installed by the agency only. Claude gives you the exact settings and permission scopes when you get here.
-- The portal shows a Client ID, a Client Secret and a Shared Secret (for the custom page). They go into Render (step 3), not chat.
-- Check two billing questions while you're in the portal (Claude will point to where): whether the private app can take usage charges, and the payout setup.
+## 2. Boutiqly developer account and the private app (part 1)
 
-## 3. Render (hosting)
+1. Open the developer portal (link in `docs/platform-notes.md`) and sign up with the **Boutiqly agency login**.
+2. **My Apps → Create App.** Name: `Social Studio`. App type: **Private**. Target user / distribution: **Sub-account**. Who can install: **Agency only** (only the agency can install it into sub-accounts).
+3. **Scopes** (Advanced Settings → Auth, or the Scopes section). Tick these:
+   - `locations.readonly` (the shop's name and time zone)
+   - `users.readonly` (names for the Team list)
+   - `socialplanner/account.readonly` (which social accounts are connected)
+   - `socialplanner/post.readonly` and `socialplanner/post.write` (create and track posts)
+   - `medias.readonly` and `medias.write` (Boutiqly media storage)
+   - `charges.readonly` and `charges.write` (wallet billing, Milestone 6)
 
-- Make an account at render.com and add a card.
-- Claude writes a `render.yaml` blueprint that sets up the three pieces at once: the web app, the worker and the database. You connect the GitHub repo and approve it.
-- Expected cost to start: about $40 a month. The free workspace covers one login; it's $25 a month more once the reviewing developer needs access.
-- Every secret from steps 2 and 4 is pasted into Render → the service → Environment. The names are in `.env.example`.
+   If a name is slightly different in the list, tick the closest match and tell Claude. Scopes can be added later, but each change means reinstalling.
+4. **Shared Secret** (Advanced Settings → Auth → Shared Secret → Generate). Leave the tab open; it goes into Render in step 4.
+5. **Client keys** (Advanced Settings → Auth → Client Keys → Add). You get a **Client ID** and a **Client Secret**. The secret may only be shown once: leave the tab open or come back and make a new one when Render is ready.
+6. **Billing check** (App → Pricing): note whether a private app can turn on usage-based pricing and set up payouts, and what fee it shows. Tell Claude what you see (that's not secret).
+7. Leave the **Redirect URL** and the **Custom Page URL** empty for now. They need Render's web address (step 5).
 
-## 4. Claude API key
+## 3. Claude API key
 
-- In the Claude Console (platform.claude.com), make a workspace called "Social Studio", add billing, and **set a monthly spend limit** so nothing runs away while we build.
-- Create an API key and paste it straight into Render as `ANTHROPIC_API_KEY`.
-- This is billed per use, separately from your Claude plan.
+1. Go to platform.claude.com → sign in → **Settings → Workspaces → Create workspace**: `Social Studio`.
+2. **Settings → Billing**: add a card and buy starting credits if asked.
+3. **Settings → Limits**: set a **monthly spend limit** on the Social Studio workspace. Suggest $50 while we build.
+4. **API Keys → Create Key**, workspace Social Studio, name `render`. Copy it into Render in step 4, not anywhere else.
 
-## 5. A test sub-account
+## 4. Render (hosting): about $39 a month
 
-- In the Boutiqly agency, make a sub-account called "Social Studio Test". Connect a throwaway Instagram (or a spare page) so we can post for real without touching a live brand.
-- Make Space comes next, once posting through the test sub-account works.
+Do this after Claude's first pull request is merged into `main` (the blueprint file has to be on `main`).
+
+1. render.com → sign up **with GitHub** → add a card (Account → Billing).
+2. Let Render see the repo: **New → Blueprint** → **Configure GitHub** → give it access to `social-studio` only.
+3. Pick `social-studio`, branch `main`. Render reads `render.yaml` and lists three things: `social-studio` (web, Starter $7), `social-studio-worker` (worker, Standard $25), `social-studio-db` (Postgres basic, about $7).
+4. Render asks for the secret values. Paste each from its own tab:
+   - `BOUTIQLY_CLIENT_ID`, `BOUTIQLY_CLIENT_SECRET`, `BOUTIQLY_SHARED_SECRET` (step 2)
+   - `BOUTIQLY_APP_ID`: the app's id from the portal (in the app's address bar or settings page)
+   - `BOUTIQLY_APP_DOMAINS`: the address you open Boutiqly at, e.g. `app.boutiqly.io` (no secret; Claude can fill this in with you)
+   - `ANTHROPIC_API_KEY` (step 3)
+   - Anything you don't have yet can stay empty and be added later under the service → **Environment**.
+5. **Apply.** The first build takes a few minutes. Then open `https://<your web address>.onrender.com/health`: it should say **Social Studio is up**, with Database **Connected** and Worker **Running**.
+
+## 5. Boutiqly private app (part 2) and the test sub-account
+
+1. In the Boutiqly agency, make a sub-account called **Social Studio Test**. Connect a throwaway Instagram (or a spare page) for later posting tests.
+2. Back in the developer portal, on the Social Studio app:
+   - **Redirect URL**: `https://<your web address>.onrender.com/oauth/callback`
+   - **Custom Page** (Modules → Custom Pages → Add): Title `Social Studio`, URL `https://<your web address>.onrender.com/`
+3. Install the app into **Social Studio Test** (the portal's install link, or the agency's marketplace → Social Studio → Install → pick the sub-account). You land on a page saying "Social Studio is installed".
+4. Switch into Social Studio Test. **Social Studio** should be in the left menu. Open it: you should see your name and **Boutiqly team**.
+5. On your phone, open the LeadConnector app, switch to Social Studio Test, and look for Social Studio in the menu. Tell Claude what you see.
 
 ## Before the content engine milestone (late October)
 

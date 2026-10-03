@@ -20,6 +20,15 @@ Naming: in this repo the platform is always "Boutiqly" (see `CLAUDE.md`). The de
 - **OAuth:** the app gets an access token per install (agency or sub-account) and refreshes it. Store tokens encrypted.
 - **Menu visibility:** custom menu links can be limited by user role and by sub-account. The app also enforces its own Team list.
 
+## Who's looking (user context), as built Oct 3, 2026
+
+From the platform's official marketplace app template (its GitHub repo; the developer docs site is blocked from Claude's sandbox):
+
+- The tab sends `{ message: "REQUEST_USER_DATA" }` to the Boutiqly page around it with `postMessage`; Boutiqly answers with `{ message: "REQUEST_USER_DATA_RESPONSE", payload }`.
+- `payload` is OpenSSL-style AES-256-CBC with a passphrase (the app's Shared Secret): base64 of `Salted__` + 8-byte salt + ciphertext. CryptoJS's `AES.decrypt(payload, secret)` reads it; we use Node's own crypto.
+- Fields we read: `userId`, `companyId`, `type` (`agency` or `location`), `role`, `userName`, `email`, `activeLocation`. **Confirm on the first real sign-in**: if the names differ, the server logs the field names (never values) as "Unexpected user context shape".
+- The payload carries no timestamp, so a copied payload stays valid until the Shared Secret changes. Our own login pass lasts one hour. Rotate the Shared Secret if it ever leaks.
+
 ## Social planner
 
 - **Channels** (help center, updated Aug 18, 2026): Facebook, Instagram, Threads, Google Business Profile, LinkedIn, TikTok, YouTube, Pinterest, communities and Bluesky. **X is not on the list**, though some third-party guides still show it; check the connect screen on day one. Post types, media options and analytics vary by channel.

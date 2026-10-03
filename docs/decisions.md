@@ -34,3 +34,10 @@ Claude (technical):
 - **Repo layout:** npm workspaces `server/`, `web/`, `shared/`; Python in `worker/`; `render.yaml` blueprint at the root; CI in GitHub Actions (typecheck, tests, build, worker tests).
 - **Login inside the tab:** browsers block cookies inside an embedded page, so after the server verifies Boutiqly's user context it hands the page a short-lived signed session token, sent as a header on each request. No cookies.
 - **Tests:** Vitest for TypeScript, pytest for the worker.
+- **Server runs TypeScript directly** with Node 22's built-in type stripping: no separate build step for the server; only the tab is built (Vite).
+- **Only Boutiqly may show the tab** (CSP `frame-ancestors`): the platform's app domains are built in; Boutiqly's white-label domain goes in `BOUTIQLY_APP_DOMAINS` in Render.
+- **Getting on the Team list:** anyone without access sees a request-access screen with an "Ask for access" button. Requests show on the Brand screen's Team panel, where Boutiqly's team (or an owner, once there is one) makes them an owner or team member. Only people who have opened the tab can be added, because that's how the app knows them without extra Boutiqly permissions. The last owner can't remove themselves.
+- **Install tokens** are encrypted with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`) and refreshed five minutes before they expire.
+- **Render region:** Ohio for all three pieces (closest to Dallas and to the platform's US servers).
+- **Worker health:** the worker writes a heartbeat every 30 seconds; the health page shows it. A quiet worker doesn't fail the web service's health check, so Render won't restart the tab over a worker problem.
+
