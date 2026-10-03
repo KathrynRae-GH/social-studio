@@ -169,7 +169,7 @@ describe("the spend guard", () => {
     await claudeOn();
     script = [say("Hi")];
     await askRaw("Hello");
-    expect(calls[0]).toMatchObject({ model: "claude-opus-5-5", thinking: { type: "adaptive" }, fallbacks: "default" });
+    expect(calls[0]).toMatchObject({ model: "claude-opus-5-5", thinking: { type: "adaptive" }, fallbacks: "default", output_config: { effort: "xhigh" } });
     expect((calls[0]!.system as { cache_control?: unknown }[])[0]!.cache_control).toEqual({ type: "ephemeral" });
   });
 });
@@ -214,7 +214,11 @@ describe("designing with Claude", () => {
     expect(doc).toContain("--brand-accent: #de771f");
     expect(doc).not.toContain("<script");
 
-    const result = JSON.parse((calls[1]!.messages.at(-1)!.content as { content: string }[])[0]!.content);
+    const toolContent = (calls[1]!.messages.at(-1)!.content as { content: { type: string; text?: string; source?: { url: string } }[] }[])[0]!.content;
+    const result = JSON.parse(toolContent[0]!.text!);
+    // Claude sees each rendered frame, and draft 1 always gets a critique round.
+    expect(toolContent.filter((b) => b.type === "image").map((b) => b.source!.url)).toHaveLength(2);
+    expect(toolContent.at(-1)!.text).toContain("This is draft 1. Required before you reply");
     expect(result.rendered_frame_asset_ids).toHaveLength(2);
     expect(result.notes.join(" ")).toContain("youtube doesn't take a carousel");
     const rendered = await t.pool.query("SELECT made_by FROM assets WHERE made_by = 'render'");
@@ -413,5 +417,58 @@ describe("uploaded fonts", () => {
     await t.app.inject({ method: "DELETE", url: `/api/fonts/${id}`, headers: agency.headers });
     const after = (await t.app.inject({ url: "/api/style", headers: agency.headers })).json().style;
     expect(after).toMatchObject({ status: "draft", customFonts: [] });
+  });
+});
+
+describe("the inspiration board", () => {
+  async function addInspiration(name = "loved.png", headers = agency.headers) {
+    const boundary = "----insp";
+    const body =
+      `--${boundary}\r\nContent-Disposition: form-data; name="purpose"\r\n\r\ninspiration\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: image/png\r\n\r\nbytes\r\n--${boundary}--\r\n`;
+    return t.app.inject({ method: "POST", url: "/api/assets", payload: body, headers: { ...headers, "content-type": `multipart/form-data; boundary=${boundary}` } });
+  }
+
+  it("holds up to 10 loved posts that Claude studies but never uses", async () => {
+    await claudeOn();
+    const first = await addInspiration();
+    expect(first.statusCode).toBe(200);
+    // Not tagged in the background, and never usable in a design.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toHaveLength(0);
+    const a = (await t.app.inject({ url: "/api/assets", headers: agency.headers })).json().assets[0];
+    expect(a).toMatchObject({ purpose: "inspiration", usable: { ok: false } });
+    for (let i = 0; i < 9; i++) await addInspiration(`p${i}.png`);
+    const eleventh = await addInspiration("one-too-many.png");
+    expect(eleventh.statusCode).toBe(400);
+    expect(eleventh.json().error).toContain("holds 10 posts");
+
+    const other = await signInAs(t.app, people.other);
+    expect((await addInspiration("x.png", other.headers)).statusCode).toBe(403);
+    expect((await t.app.inject({ method: "DELETE", url: `/api/inspiration/${a.id}`, headers: agency.headers })).statusCode).toBe(200);
+  });
+
+  it("starts each new chat with the board, and keeps it out of the chat view", async () => {
+    await claudeOn();
+    await addInspiration("loved.png");
+    script = [say("Love these."), say("Sure.")];
+    const first = await askRaw("Make something fresh");
+    const sent = calls[0]!.messages[0]!.content as { type: string; text?: string; source?: { url: string } }[];
+    expect(sent[0]!.text).toContain("inspiration board (1 post");
+    expect(sent[1]).toMatchObject({ type: "image", source: { url: "https://cdn.test/file_1.png" } });
+    expect(sent.at(-1)!.text).toContain("Make something fresh");
+
+    // A design can't put an inspiration post in a post.
+    const id = (await t.app.inject({ url: "/api/assets", headers: agency.headers })).json().assets[0].id;
+    await markTagged(id);
+    const conversationId = first.events[0].conversationId;
+    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${id}">` }] } }), say("ok")];
+    await askRaw("Use that one", conversationId);
+    const toolResult = (calls.at(-1)!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.content).toContain("Inspiration only");
+
+    const view = (await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: agency.headers })).json().conversation;
+    expect(view.items[0]).toEqual({ kind: "user", text: "Make something fresh" });
   });
 });

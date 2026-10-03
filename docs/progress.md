@@ -2,6 +2,18 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 3, 2026 (late night): fresher designs
+
+- Uploaded brand fonts work live in Girl Riot (Katy confirmed).
+- Katy found the first designs basic. Done:
+  - an **inspiration board** on Brand → Look
+  - **much stronger design guidance**
+  - a **required critique-and-redesign round** after the first render
+  - **more thinking time**
+  - 115 automated tests (101 server, 2 web, 12 worker)
+- Not tested here: how much better the real designs look. That needs the real Claude, so it's Katy's next test.
+- Next: Katy adds 3–10 loved posts to Girl Riot's board, starts a **new** chat (the board attaches at the start of a chat), asks for a carousel and compares. A design reply now takes longer (two renders) and costs more; she'll see the cost on each reply.
+
 ## Oct 3, 2026 (late night): uploaded brand fonts
 
 - Katy tested Milestone 3 and found her brand fonts didn't show (they aren't Google Fonts).

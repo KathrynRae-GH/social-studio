@@ -104,3 +104,19 @@ Claude (technical):
 - The tab's Look sample shows the real font by fetching it with the sign-in pass and embedding it.
 - Removing a font the approved look uses puts the look back to draft.
 - Owners are reminded that their font license must allow use in social media images; we don't check licenses.
+
+## Oct 3, 2026 (night): fresher designs
+
+Katy:
+- The first designs felt basic. She approved four changes, accepting that each design reply costs more (roughly 20–50¢ instead of 10–15¢):
+  1. an inspiration board on Brand → Look (3–10 loved posts Claude studies)
+  2. much stronger design guidance
+  3. a required self-critique round
+  4. more thinking time
+
+Claude (technical):
+- Inspiration posts are files with `purpose = 'inspiration'` (migration `0006`). They're never usable in designs, never tagged, and hidden from the Assets screen. Up to 10 per shop, managed by owners and Boutiqly's team.
+- The board's images go into the first message of each new chat, so they're cached and later turns only append. An existing chat keeps the board it started with.
+- The design guidance now covers composition, scale contrast, a graphic language drawn in code (shapes, stickers, squiggles, texture, color blocking, type and photo treatments), carousel rules, and a list of things that make a post look basic.
+- After every render, Claude sees the frames. The first draft of each piece must be critiqued against a checklist and redesigned before Claude replies; at most three drafts per piece per reply.
+- Ask Claude runs at effort "xhigh" (was "high").

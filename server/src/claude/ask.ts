@@ -11,7 +11,7 @@ import { assets, calendarEntries, captions, conversationMessages, conversations,
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "../brands.ts";
 import { callClaude, ClaudePausedError, type ClaudeDeps } from "./client.ts";
 import { tryWithLock } from "../jobs.ts";
-import { assetDetail, ownAsset } from "../assets.ts";
+import { assetDetail, inspirationFor, ownAsset } from "../assets.ts";
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
 import { getPiece, setCaption } from "../library.ts";
@@ -51,18 +51,57 @@ const RULES = `## Rules you always follow
 
 function designGuide(style: StyleSetView): string {
   const vars = Object.keys(brandVariables(style)).join(", ");
-  return `## How designs work
-A design is HTML + CSS (with inline SVG for shapes and graphics) for each frame, rendered to an image at an exact size. Sizes:
+  return `## How designs work (the technical part)
+A design is HTML + CSS (with inline SVG) for each frame, rendered to an image at an exact size:
 ${Object.entries(SIZES).map(([k, v]) => `- ${k}: ${v.label}`).join("\n")}
 Use post/carousel → portrait, story/story_set → story, pin → pin, google_update → landscape.
-
 The engine already sets: box-sizing border-box; html/body at the frame size with overflow hidden; body background var(--brand-background), color var(--brand-text), font var(--font-body); h1–h4 and .heading use var(--font-heading); class "photo" = width/height 100% object-fit cover.
-Colors and fonts come only from these CSS variables: ${vars}. Don't write raw hex colors except white/black for contrast.
-Photos: <img class="photo" src="asset:ASSET_ID"> or CSS url("asset:ASSET_ID"). The logo (only if the shop has an approved logo): src="asset:logo".
-No scripts, no external links, and no fonts beyond the two in the style set (already loaded for you). Text must be large enough to read on a phone (body text 34px+ on a 1080px-wide frame) with strong contrast.
-Draw graphics in code (SVG shapes, patterns, lines). For a carousel, keep a consistent system across slides and make slide 1 a strong hook.
-After design_piece returns, look at the rendered preview images to check them, and fix anything off (overflowing text, low contrast, cramped layout) with another design_piece call on the same piece_id.`;
+Brand colors and fonts come from these CSS variables: ${vars}. Build every color from them (tints and shades with color-mix(), e.g. color-mix(in srgb, var(--brand-accent) 40%, white), are fine). Pure white and black are fine for contrast.
+Photos: <img class="photo" src="asset:ASSET_ID"> or CSS url("asset:ASSET_ID"). The logo, only if the shop has an approved one: src="asset:logo".
+No scripts and no outside links; only the shop's two fonts (already loaded). Chromium renders it, so modern CSS works: grid, clip-path, mask, mix-blend-mode, filter, transforms, gradients, color-mix, text-stroke, and SVG filters such as feTurbulence for grain and paper texture.
+
+## Design like a great social designer, not a template
+Your first idea is usually the safe one. Push past it. Every post should look like this shop made it on a good day, not like a slide deck.
+
+Before you design, decide (briefly, to yourself):
+- The one thing someone should feel or do in the 1.5 seconds they look at it.
+- The idea: a visual metaphor, a strong photo crop, a bold typographic statement, a playful graphic, a before/after, a list, a quote. Pick one and commit.
+- Which of the shop's inspiration posts it borrows from (layout, energy, graphic habits), without copying them.
+
+Composition
+- Make one element clearly dominant (huge type, a big photo crop, or a bold shape), then one or two supporting pieces. Avoid a centered stack of small, evenly sized things.
+- Use asymmetry, overlap and tension: type that runs off the edge, photos that break out of their frame, elements that overlap, tilted stickers (rotate 2–8°).
+- Use real scale contrast: a headline 3–6x the size of body text. Headlines on a 1080px frame are often 120–260px. Keep body text 34px or more.
+- Fill the frame on purpose: either generous empty space or edge-to-edge energy, never a lonely block floating in the middle.
+- Keep the important things 60px or more from the edges (Instagram crops and overlays), except elements meant to bleed off.
+
+Graphic language (draw it in code, matched to the shop's vibe)
+- Shapes and accents: blobs, arches, circles, starbursts, badges, stickers with a white outline, hand-drawn-feeling squiggles and underlines (SVG paths with round caps), arrows, sparkles, tape, torn-paper edges (clip-path), halftone dots, stripes, checkerboards, grids.
+- Texture adds warmth: subtle paper grain (an SVG feTurbulence filter at low opacity), soft gradients, risograph-style offset shadows.
+- Color blocking: big flat fields of the brand colors, split layouts, color-on-color type. Use the accent sparingly, so it pops.
+- Type treatments: tight leading on big headlines (0.9–1.0), uppercase with tracking for small labels, mixing weights, outline text, text on a curved path (SVG textPath), a highlighted word with a marker stroke behind it.
+- Photo treatments: bold crops (close-ups beat wide shots), arch or circle masks, duotone with mix-blend-mode, a sticker-style cutout frame, a photo grid, a photo placed on a colored block with a shadow.
+
+Carousels and Story sets
+- Slide 1 is the hook: one bold statement or image that makes people swipe. No logo-only covers.
+- Keep one visual system across slides (same grid, colors and type) but vary each slide's composition so it doesn't feel repetitive. A continuous element across slide edges (a line or shape that carries across) rewards swiping.
+- End with a clear, friendly call to action slide when it fits.
+
+Things that make a post look basic (avoid them)
+- Everything centered, the same size, on a plain flat background.
+- Default-looking rounded rectangles and small pill labels as the only graphics.
+- A photo in the top half with text in the bottom half, every time.
+- Tiny type, timid color, and lots of dead space with nothing intentional in it.
+- Repeating the last post's layout.`;
 }
+
+const CRITIQUE = `Review the rendered frames above like a demanding art director, against this checklist:
+1. Stop power: would this stop someone mid-scroll? Is there one clear focal point?
+2. On brand: does it feel like this shop and its inspiration board, not a generic template?
+3. Craft: hierarchy, scale contrast, spacing and alignment intentional; nothing awkwardly cramped or floating; text fully visible, not cut off or overflowing (unless it bleeds on purpose).
+4. Legibility: readable on a phone, strong contrast.
+5. Freshness: is any part "basic" (see the list in your instructions)?
+Name the two or three biggest weaknesses to yourself, then fix them.`;
 
 function styleText(style: StyleSetView, shopName: string): string {
   return `## This shop
@@ -72,7 +111,8 @@ Colors: ${style.colors.map((c) => `${c.name} ${c.hex} (${c.role})`).join("; ")}
 Heading font: ${style.headingFont}. Body font: ${style.bodyFont}.${style.customFonts.length ? `\nUploaded fonts (already loaded, use by family name): ${[...new Set(style.customFonts.map((f) => `${f.family} (${style.customFonts.filter((x) => x.family === f.family).map((x) => `${x.weight}${x.italic ? " italic" : ""}`).join(", ")})`))].join("; ")}.` : ""}
 Logo: ${style.logoUrl ? "yes (asset:logo)" : "none, so never include a logo"}
 Vibe: ${style.vibe || "(no notes yet)"}
-Dos and don'ts: ${style.dosDonts || "(none yet)"}`;
+Dos and don'ts: ${style.dosDonts || "(none yet)"}
+Inspiration board: the shop's loved posts are attached at the start of each chat (if it has any). Study them closely: their layouts, graphic habits, type treatments, color use and energy. Design in that spirit for this shop's own content. Never copy another brand's posts, logos or text, and never put an inspiration image into a design.`;
 }
 
 function systemPrompt(style: StyleSetView, shopName: string): string {
@@ -225,6 +265,7 @@ interface ToolOutcome {
 }
 
 interface RunCtx {
+  drafts: Map<string, number>; // design_piece renders per piece in this reply
   deps: AskDeps;
   viewer: Viewer;
   brand: Brand;
@@ -382,15 +423,33 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
       }
       const view = await getPiece(db, viewer, pieceId);
       ctx.emit({ type: "piece", piece: view });
-      return {
-        content: JSON.stringify({
-          piece_id: pieceId,
-          status: "Suggested",
-          rendered_frame_asset_ids: frames,
-          captions_saved: Object.keys(view.captions),
-          notes: capNotes,
-        }),
-      };
+      const summary = JSON.stringify({
+        piece_id: pieceId,
+        status: "Suggested",
+        rendered_frame_asset_ids: frames,
+        captions_saved: Object.keys(view.captions),
+        notes: capNotes,
+      });
+      if (frames.length === 0) return { content: summary };
+      // Claude sees what it made, and the first draft of a piece always gets
+      // a critique-and-improve round before the owner sees the final.
+      const draft = (ctx.drafts.get(pieceId) ?? 0) + 1;
+      ctx.drafts.set(pieceId, draft);
+      const frameRows = await db.select({ id: assets.id, url: assets.url }).from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, frames)));
+      const images: ContentBlock[] = frames
+        .map((id) => frameRows.find((r) => r.id === id))
+        .filter((r): r is { id: string; url: string } => !!r)
+        .flatMap((r, i) => [
+          { type: "text" as const, text: `Frame ${i + 1}:` },
+          { type: "image" as const, source: { type: "url" as const, url: r.url } },
+        ]);
+      const next =
+        draft === 1
+          ? `This is draft 1. Required before you reply to the owner: ${CRITIQUE}\nThen call design_piece again with piece_id ${pieceId} and the improved design (keep the captions unless they need changing).`
+          : draft >= 3
+            ? "This is the final draft for this turn. Reply to the owner: say in a sentence or two what you made and why, and offer one or two specific directions they could ask for next."
+            : `This is draft ${draft}. ${CRITIQUE}\nIf something is still clearly weak, call design_piece once more with piece_id ${pieceId}; otherwise reply to the owner with a sentence or two on what you made and why.`;
+      return { content: [{ type: "text", text: summary }, ...images, { type: "text", text: next }] };
     }
     case "propose_change": {
       const input = ProposeInput.parse(rawInput);
@@ -449,12 +508,22 @@ export async function getConversation(db: Db, viewer: Viewer, id: string): Promi
       continue;
     }
     for (const b of content) {
-      if (b.type === "text" && b.text.trim()) items.push({ kind: m.role === "user" ? "user" : "claude", text: b.text });
+      if (b.type === "text" && b.text.trim()) {
+        if (m.role === "user" && b.text.startsWith("The shop's inspiration board")) continue;
+        // The note we add in front of each message (date, sender) isn't shown.
+        items.push({ kind: m.role === "user" ? "user" : "claude", text: m.role === "user" ? b.text.replace(/^\[[^\]]*\]\n/, "") : b.text });
+      }
       if (b.type === "tool_use") toolNames.set(b.id, b.name);
-      if (b.type === "tool_result" && !b.is_error && typeof b.content === "string") {
+      const resultText =
+        b.type === "tool_result" && !b.is_error
+          ? typeof b.content === "string"
+            ? b.content
+            : (b.content ?? []).find((c): c is Anthropic.Beta.BetaTextBlockParam => c.type === "text")?.text
+          : undefined;
+      if (b.type === "tool_result" && resultText) {
         const name = toolNames.get(b.tool_use_id);
         try {
-          const parsed = JSON.parse(b.content);
+          const parsed = JSON.parse(resultText);
           if (name === "design_piece" && parsed.piece_id) {
             if (!pieceIds.includes(parsed.piece_id)) pieceIds.push(parsed.piece_id);
             items.push({ kind: "piece", pieceId: parsed.piece_id });
@@ -525,18 +594,28 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
     ];
     const stored = await deps.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversationId)).orderBy(asc(conversationMessages.id));
     const history: MessageParam[] = stored.map((m) => ({ role: m.role, content: m.content as MessageParam["content"] }));
-    const userContent: ContentBlock[] = [{ type: "text", text: `[${now.date} ${now.time}, ${tz}; from ${viewer.ctx.name || "the team"}]\n${text}` }];
+    const userContent: ContentBlock[] = [];
+    if (stored.length === 0) {
+      // A new chat starts with the shop's inspiration board, so it's part of
+      // the cached history (later turns only ever append).
+      const board = await inspirationFor(deps.db, brand);
+      if (board.length) {
+        userContent.push({ type: "text", text: `The shop's inspiration board (${board.length} post${board.length > 1 ? "s" : ""} they love). Study these before designing:` });
+        for (const a of board) userContent.push({ type: "image", source: { type: "url", url: a.url } });
+      }
+    }
+    userContent.push({ type: "text", text: `[${now.date} ${now.time}, ${tz}; from ${viewer.ctx.name || "the team"}]\n${text}` });
     history.push({ role: "user", content: userContent });
     await append(deps.db, conversationId, "user", userContent);
 
-    const runCtx: RunCtx = { deps, viewer, brand, conversationId, emit };
+    const runCtx: RunCtx = { drafts: new Map(), deps, viewer, brand, conversationId, emit };
     let total = 0;
     try {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const { message, costCents } = await callClaude(
           deps,
           { brand, userId: viewer.ctx.userId, purpose: "ask_claude", refId: conversationId },
-          { system, messages: forRequest(history), tools: TOOLS, maxTokens: 64000, effort: "high", onText: (delta) => emit({ type: "text", delta }) },
+          { system, messages: forRequest(history), tools: TOOLS, maxTokens: 64000, effort: "xhigh", onText: (delta) => emit({ type: "text", delta }) },
         );
         total += costCents;
         history.push({ role: "assistant", content: message.content as unknown as ContentBlock[] });

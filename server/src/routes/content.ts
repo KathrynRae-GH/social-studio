@@ -24,6 +24,7 @@ import {
 } from "../calendar.ts";
 import { buildPack } from "../packs.ts";
 import { storeFile } from "../media.ts";
+import { MAX_INSPIRATION, inspirationCount } from "../assets.ts";
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -49,6 +50,17 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
     const file = await req.file();
     if (!file) throw new AccessError("Choose a file to upload.", 400);
     if (!/^(image|video)\//.test(file.mimetype)) throw new AccessError("Only photos and videos can be uploaded.", 400);
+    // An inspiration post (sent as a "purpose" field before the file) goes on
+    // the Look screen's board, not into the shop's usable files.
+    const purposeField = file.fields.purpose as { value?: unknown } | undefined;
+    const purpose = purposeField && "value" in purposeField && purposeField.value === "inspiration" ? "inspiration" : "content";
+    if (purpose === "inspiration") {
+      requirePermission(viewer, "manage_brand");
+      if (!file.mimetype.startsWith("image/")) throw new AccessError("Inspiration posts are images (screenshots or saved posts).", 400);
+      if ((await inspirationCount(db, brand)) >= MAX_INSPIRATION) {
+        throw new AccessError(`The inspiration board holds ${MAX_INSPIRATION} posts. Remove one first.`, 400);
+      }
+    }
     const buffer = await file.toBuffer().catch(() => {
       throw new AccessError("That file is over 100 MB. Make it smaller and try again.", 413);
     });
@@ -61,8 +73,9 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
       mime: file.mimetype,
       name,
       sizeBytes: buffer.length,
+      purpose,
     });
-    deps.afterUpload?.(viewer, brand, asset.id, asset.mime);
+    if (purpose === "content") deps.afterUpload?.(viewer, brand, asset.id, asset.mime);
     return { asset };
   });
 

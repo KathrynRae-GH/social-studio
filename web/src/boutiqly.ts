@@ -97,8 +97,9 @@ export const api = {
     call<{ team: TeamEntry[] }>(`/api/team/${encodeURIComponent(userId)}`, { method: "DELETE" }),
 
   // Library
-  upload: (file: File) => {
+  upload: (file: File, purpose: "content" | "inspiration" = "content") => {
     const form = new FormData();
+    form.append("purpose", purpose); // must come before the file
     form.append("file", file);
     return call<{ asset: AssetView }>("/api/assets", { method: "POST", body: form });
   },
@@ -141,6 +142,7 @@ export const api = {
     form.append("file", file);
     return call<{ font: UploadedFont }>("/api/fonts", { method: "POST", body: form });
   },
+  removeInspiration: (id: string) => call<{ ok: true }>(`/api/inspiration/${id}`, { method: "DELETE" }),
   deleteFont: (id: string) => call<{ ok: true }>(`/api/fonts/${id}`, { method: "DELETE" }),
   approveStyle: () => call<{ style: StyleSetView }>("/api/style/approve", { method: "POST", body: "{}" }),
   assets: () => call<{ assets: AssetDetail[] }>("/api/assets"),
