@@ -23,7 +23,7 @@ const fakeFetch = (async (url: string, init: RequestInit = {}) => {
   }
   apiCalls.push(path);
   if (path.startsWith("/users/?locationId=loc_test_1")) return json({ users: boutiqlyUsers });
-  if (path === "/locations/loc_test_1") return json({ location: { id: "loc_test_1", name: "Test Boutique" } });
+  if (path === "/locations/loc_test_1") return json({ location: { id: "loc_test_1", name: "Test Boutique", timezone: "America/Chicago" } });
   return new Response("not found", { status: 404 });
 }) as unknown as typeof fetch;
 

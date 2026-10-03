@@ -17,15 +17,16 @@ import {
   loadViewer,
   removeFromTeam,
   requestAccess,
-  saveBrandName,
+  saveBrandDetails,
   setTeamRole,
   type Brand,
   type SubAccountUsers,
   type Viewer,
 } from "./brands.ts";
-import { NotInstalledError, getLocationName, listLocationUsers } from "./boutiqly/api.ts";
+import { NotInstalledError, BoutiqlyError, boutiqlyClient } from "./boutiqly/api.ts";
 import { completeInstall } from "./boutiqly/installs.ts";
 import { healthReport, healthPage } from "./health.ts";
+import { contentRoutes } from "./routes/content.ts";
 
 export interface AppDeps {
   config: Config;
@@ -61,6 +62,7 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AccessError) return reply.code(err.statusCode).send({ error: err.message });
     if (err instanceof NotInstalledError) return reply.code(400).send({ error: err.message });
+    if (err instanceof BoutiqlyError) return reply.code(502).send({ error: err.message });
     if (err instanceof UserContextError) return reply.code(401).send({ error: "We couldn't confirm who you are. Reload the page in Boutiqly." });
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.code(status).send({ error: (err as Error).message });
@@ -76,8 +78,12 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
     return loadViewer(db, ctx);
   }
 
+  function clientFor(brand: Brand) {
+    return boutiqlyClient(db, config, brand.locationId, brand.companyId, fetchImpl);
+  }
+
   function subAccountUsers(brand: Brand): SubAccountUsers {
-    return () => listLocationUsers(db, config, brand.locationId, brand.companyId, fetchImpl);
+    return () => clientFor(brand).listUsers();
   }
 
   // ---- Health ----
@@ -102,14 +108,14 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
       throw err;
     }
     const viewer = await loadViewer(db, ctx);
-    // The shop's name comes from Boutiqly the first time the tab opens there.
+    // The shop's name and time zone come from Boutiqly the first time the tab opens there.
     // Not knowing it yet isn't a reason to keep anyone waiting.
-    if (viewer.brand && !viewer.brand.name) {
+    if (viewer.brand && (!viewer.brand.name || !viewer.brand.timezone)) {
       try {
-        const name = await getLocationName(db, config, viewer.brand.locationId, viewer.brand.companyId, fetchImpl);
-        if (name) await saveBrandName(db, viewer.brand, name);
+        const location = await clientFor(viewer.brand).getLocation();
+        await saveBrandDetails(db, viewer.brand, location);
       } catch (err) {
-        req.log.info({ reason: (err as Error).message }, "Shop name not available yet");
+        req.log.info({ reason: (err as Error).message }, "Shop details not available yet");
       }
     }
     return {
@@ -164,6 +170,15 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
     const viewer = await viewerFrom(req);
     await removeFromTeam(db, viewer, req.params.userId);
     return { team: await listTeam(db, viewer) };
+  });
+
+  // ---- Library, Calendar, Ideas, posting ----
+  app.register(contentRoutes, {
+    db,
+    calendar: { db, pool, client: clientFor },
+    viewerFrom,
+    clientFor,
+    fetchImpl,
   });
 
   // ---- App install (OAuth) ----

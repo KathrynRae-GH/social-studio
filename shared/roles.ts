@@ -45,7 +45,14 @@ export interface Me {
   user: { id: string; name: string; email: string };
   role: Role;
   roleLabel: string;
-  brand: { id: string; name: string | null; locationId: string; hasOwner: boolean } | null;
+  brand: {
+    id: string;
+    name: string | null;
+    locationId: string;
+    hasOwner: boolean;
+    timezone: string;
+    livePosting: boolean;
+  } | null;
   permissions: Permission[];
 }
 
