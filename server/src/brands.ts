@@ -129,12 +129,18 @@ export async function hasRequestedAccess(db: Db, viewer: Viewer): Promise<boolea
 export async function listTeam(db: Db, viewer: Viewer): Promise<TeamEntry[]> {
   const brand = requirePermission(viewer, "use_tab");
   const members = await db
-    .select({ userId: teamMembers.userId, role: teamMembers.role, name: users.name, email: users.email })
+    .select({ userId: teamMembers.userId, role: teamMembers.role, name: users.name, email: users.email, isAgency: users.isAgency })
     .from(teamMembers)
     .innerJoin(users, eq(users.id, teamMembers.userId))
     .where(eq(teamMembers.brandId, brand.id))
     .orderBy(teamMembers.role, users.name);
-  const entries: TeamEntry[] = members.map((m) => ({ userId: m.userId, name: m.name, email: m.email, role: m.role }));
+  const entries: TeamEntry[] = members.map((m) => ({
+    userId: m.userId,
+    name: m.name,
+    email: m.email,
+    role: m.role,
+    isAgency: m.isAgency,
+  }));
   if (!can(viewer.role, "manage_team")) return entries;
 
   const requests = await db
@@ -168,7 +174,10 @@ async function hasAccessRequest(db: Db, brandId: string, userId: string): Promis
 }
 
 // People who could be added to the Team list: this sub-account's Boutiqly
-// users who aren't agency users and aren't on the list already.
+// users, plus Boutiqly's agency team (those who have opened Social Studio,
+// so we know them from Boutiqly's own signed user context). Agency people
+// keep full access either way; being on the list names them for this shop,
+// for example as its owner.
 export async function listCandidates(db: Db, viewer: Viewer, subAccountUsers: SubAccountUsers): Promise<TeamEntry[]> {
   const brand = requirePermission(viewer, "manage_team");
   const onTeam = new Set(
@@ -176,16 +185,29 @@ export async function listCandidates(db: Db, viewer: Viewer, subAccountUsers: Su
       (r) => r.userId,
     ),
   );
-  return (await subAccountUsers())
-    .filter((u) => !u.isAgency && !onTeam.has(u.id))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((u) => ({ userId: u.id, name: u.name, email: u.email, role: "candidate" as const }));
+  const people = new Map<string, TeamEntry>();
+  for (const u of await subAccountUsers()) {
+    people.set(u.id, { userId: u.id, name: u.name, email: u.email, role: "candidate", isAgency: u.isAgency });
+  }
+  for (const u of await knownAgencyUsers(db, brand.companyId)) {
+    if (!people.has(u.id)) people.set(u.id, { userId: u.id, name: u.name, email: u.email, role: "candidate", isAgency: true });
+  }
+  return [...people.values()]
+    .filter((p) => !onTeam.has(p.userId))
+    .sort((a, b) => Number(a.isAgency) - Number(b.isAgency) || a.name.localeCompare(b.name));
+}
+
+async function knownAgencyUsers(db: Db, companyId: string) {
+  return db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(and(eq(users.companyId, companyId), eq(users.isAgency, true)));
 }
 
 // Adds someone to the Team list or changes their role. They must be on the
-// list already, have asked for access in this brand's tab, or be a user of
-// this sub-account according to Boutiqly itself (checked here, never taken
-// from the browser).
+// list already, have asked for access in this brand's tab, be on this
+// agency's Boutiqly team, or be a user of this sub-account according to
+// Boutiqly itself (checked here, never taken from the browser).
 export async function setTeamRole(
   db: Db,
   viewer: Viewer,
@@ -198,20 +220,26 @@ export async function setTeamRole(
   const known =
     !!target &&
     target.companyId === brand.companyId &&
-    ((await teamRoleOf(db, brand.id, targetUserId)) !== null || (await hasAccessRequest(db, brand.id, targetUserId)));
+    (target.isAgency ||
+      (await teamRoleOf(db, brand.id, targetUserId)) !== null ||
+      (await hasAccessRequest(db, brand.id, targetUserId)));
 
   if (!known) {
     const fromBoutiqly = (await subAccountUsers()).find((u) => u.id === targetUserId);
     if (!fromBoutiqly) throw new AccessError("That person isn't a user of this sub-account in Boutiqly.", 404);
-    if (fromBoutiqly.isAgency) throw new AccessError("Boutiqly's team already has full access.", 400);
     [target] = await db
       .insert(users)
-      .values({ id: fromBoutiqly.id, companyId: brand.companyId, name: fromBoutiqly.name, email: fromBoutiqly.email })
+      .values({
+        id: fromBoutiqly.id,
+        companyId: brand.companyId,
+        name: fromBoutiqly.name,
+        email: fromBoutiqly.email,
+        isAgency: fromBoutiqly.isAgency,
+      })
       .onConflictDoUpdate({ target: users.id, set: { name: fromBoutiqly.name, email: fromBoutiqly.email } })
       .returning();
   }
   if (!target) throw new AccessError("That person isn't a user of this sub-account in Boutiqly.", 404);
-  if (target.isAgency) throw new AccessError("Boutiqly's team already has full access.", 400);
 
   await db.transaction(async (tx) => {
     await tx

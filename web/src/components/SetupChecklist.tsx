@@ -11,7 +11,7 @@ export function SetupChecklist({ hasOwner, onOpenTeam }: { hasOwner: boolean; on
   const steps: Step[] = [
     {
       title: "Name the shop's owner",
-      text: hasOwner ? "Done. Owners can add their own staff on the Brand screen." : "Pick the owner from the people in this sub-account.",
+      text: hasOwner ? "Done. Owners can add their own staff on the Brand screen." : "Pick the owner: someone from the shop, or from Boutiqly's team.",
       state: hasOwner ? "done" : "todo",
       action: hasOwner ? undefined : { label: "Choose the owner", onClick: onOpenTeam },
     },

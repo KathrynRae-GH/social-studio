@@ -57,13 +57,13 @@ export function TeamPanel({ me, onTeamChange }: { me: Me; onTeamChange?: (team: 
       </div>
 
       {me.role === "boutiqly_team" && hasOwner === false && !picker && (
-        <p className="notice">This shop has no owner yet. Click "Add someone" and make the shop's owner the owner.</p>
+        <p className="notice">This shop has no owner yet. Click "Add someone" and pick the owner: someone from the shop, or someone from Boutiqly's team.</p>
       )}
 
       {picker && (
         <div className="picker">
           <div className="team-head">
-            <h3>People in this sub-account</h3>
+            <h3>People you can add</h3>
             <button className="btn-link small" onClick={() => setPicker(null)}>Close</button>
           </div>
           {picker.people === null && <p className="muted">Loading from Boutiqly…</p>}
@@ -75,9 +75,10 @@ export function TeamPanel({ me, onTeamChange }: { me: Me; onTeamChange?: (team: 
             {picker.people?.map((p) => (
               <li key={p.userId}>
                 <div>
-                  <strong>{p.name}</strong>
+                  <strong>{p.name}{p.userId === me.user.id && " (you)"}</strong>
                   <span className="muted small">{p.email}</span>
                 </div>
+                {p.isAgency && <span className="role-chip role-boutiqly_team">Boutiqly team</span>}
                 <div className="row-actions">
                   <button className="btn-secondary small" onClick={() => run(api.setRole(p.userId, "owner"), true)}>Make owner</button>
                   <button className="btn-secondary small" onClick={() => run(api.setRole(p.userId, "team"), true)}>Make team member</button>
@@ -94,11 +95,12 @@ export function TeamPanel({ me, onTeamChange }: { me: Me; onTeamChange?: (team: 
         {team?.map((t) => (
           <li key={t.userId}>
             <div>
-              <strong>{t.name}</strong>
+              <strong>{t.name}{t.userId === me.user.id && " (you)"}</strong>
               <span className="muted small">{t.email}</span>
             </div>
+            {t.isAgency && <span className="role-chip role-boutiqly_team">Boutiqly team</span>}
             <span className={`role-chip role-${t.role}`}>{LABEL[t.role]}</span>
-            {canManage && t.userId !== me.user.id && (
+            {canManage && (t.userId !== me.user.id || me.role === "boutiqly_team") && (
               <div className="row-actions">
                 {t.role !== "owner" && <button className="btn-secondary small" onClick={() => run(api.setRole(t.userId, "owner"))}>Make owner</button>}
                 {t.role !== "team" && <button className="btn-secondary small" onClick={() => run(api.setRole(t.userId, "team"))}>Make team member</button>}
