@@ -46,3 +46,21 @@ Claude (technical):
 - Girl Riot Society is Katy's own; fine for the tab to show there during the build.
 - **Agency admins can be named on a shop's Team list (Katy, Oct 3)**, including as its owner, for example for Katy's own brands and white-glove clients. "Add someone" lists the sub-account's users plus Boutiqly's agency people who have opened Social Studio. Their access doesn't change: agency people keep full access to every shop for now.
 
+## Oct 3, 2026: Milestone 2 (Katy's answers, then Claude's technical calls)
+
+Katy:
+- Claude builds a whole milestone in one go, asks the milestone's questions up front, and merges its own pull requests once the checks pass. Still always asks before anything posts, charges, deletes or costs money.
+- Until Claude designs posts (M3), posts get into the Library by the owner uploading finished files and writing captions. No import of the Make Space prototype.
+- **Approve sends it to Boutiqly right away** (no separate Schedule click).
+- Calendar has This week, List (six weeks), Month and the Instagram grid preview now.
+
+Claude (technical):
+- **Live posting switch per shop, off by default.** Only Boutiqly's team can turn it on (logged). While off, Approve sends nothing and shows exactly what it would send. This is how "never post without Katy's yes" is enforced in code.
+- **Routes** (one table in `shared/channels.ts`): Instagram feed posts and carousels, Facebook, Threads, LinkedIn, Bluesky, communities, Google and YouTube Shorts are published by Boutiqly; Instagram Reels, Stories and Story sets go as app pings (`instagramPostDetails.publishViaPushNotification`, one ping per Story frame a minute apart, note "Frame N of M" plus the caption); the Facebook copy of a Reel is a "share from Instagram" reminder; TikTok, X, Pinterest (until board picking) and any channel not connected in Boutiqly become ready-to-post packs.
+- **Packs**: a zip with the files in order and `POSTING SHEET.txt` (channel, local date and time, caption, alt text, link). The owner marks them Posted.
+- **Sending once**: each planner post id is saved as it comes back, so retrying a half-sent Story set only sends the missing frames; a database lock stops double clicks.
+- **Status sync** from Boutiqly runs when the Calendar opens (at most every 2 minutes per shop): published or ping sent → Posted; failed or deleted → Needs attention.
+- **Times**: the shop's IANA time zone comes from its Boutiqly location; times are entered and shown in it and stored and sent in UTC.
+- **Uploads** go straight into a "Social Studio" folder in the shop's Boutiqly media storage (100 MB per file); the database keeps only the address.
+- **This week** on the Calendar is a rolling seven days from today, so posts coming up always show.
+

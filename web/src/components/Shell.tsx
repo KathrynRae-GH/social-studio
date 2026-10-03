@@ -3,23 +3,18 @@ import type { Me } from "../../../shared/roles.ts";
 import { AskClaude } from "./AskClaude.tsx";
 import { EmptyScreen } from "../screens/EmptyScreen.tsx";
 import { BrandScreen } from "../screens/BrandScreen.tsx";
-import { SetupChecklist } from "./SetupChecklist.tsx";
+import { CalendarScreen } from "../screens/CalendarScreen.tsx";
+import { LibraryScreen } from "../screens/LibraryScreen.tsx";
+import { IdeasScreen } from "../screens/IdeasScreen.tsx";
 
 const SCREENS = ["Calendar", "Library", "Assets", "Ideas", "Brand"] as const;
 type Screen = (typeof SCREENS)[number];
-
-const EMPTY_TEXT: Record<Exclude<Screen, "Brand">, string> = {
-  Calendar: "This week's posts, what needs approval and what's scheduled will show here.",
-  Library: "Every post, carousel, Story and Reel Claude makes for you will show here, with captions for each channel.",
-  Assets: "Your photos and videos will live here, each tagged and with its people rule.",
-  Ideas: "Post ideas and shot lists will show here.",
-};
 
 export function Shell({ me }: { me: Me }) {
   const [screen, setScreen] = useState<Screen>("Calendar");
   const [askOpen, setAskOpen] = useState(false);
   const [hasOwner, setHasOwner] = useState(!!me.brand?.hasOwner);
-  const showSetup = me.permissions.includes("manage_team");
+  const timezone = me.brand?.timezone ?? "America/Chicago";
 
   return (
     <div className="shell">
@@ -46,11 +41,14 @@ export function Shell({ me }: { me: Me }) {
       </nav>
 
       <main className="screen">
-        {screen === "Calendar" && showSetup && <SetupChecklist hasOwner={hasOwner} onOpenTeam={() => setScreen("Brand")} />}
-        {screen === "Brand" ? (
+        {screen === "Calendar" && <CalendarScreen me={me} hasOwner={hasOwner} onOpenTeam={() => setScreen("Brand")} />}
+        {screen === "Library" && <LibraryScreen timezone={timezone} />}
+        {screen === "Assets" && (
+          <EmptyScreen title="Assets" text="Your photos and videos will live here, each tagged by Claude and with its people rule. For now, upload files while making a post in the Library." />
+        )}
+        {screen === "Ideas" && <IdeasScreen />}
+        {screen === "Brand" && (
           <BrandScreen me={me} onTeamChange={(team) => setHasOwner(team.some((t) => t.role === "owner"))} />
-        ) : (
-          <EmptyScreen title={screen} text={EMPTY_TEXT[screen]} />
         )}
       </main>
 
