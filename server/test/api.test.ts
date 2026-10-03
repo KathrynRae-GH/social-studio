@@ -4,19 +4,38 @@ import { accessTokenFor } from "../src/boutiqly/installs.ts";
 
 let t: Awaited<ReturnType<typeof testApp>>;
 const tokenCalls: URLSearchParams[] = [];
-const fakeFetch = (async (_url: string, init: RequestInit) => {
-  const body = new URLSearchParams(init.body as URLSearchParams);
-  tokenCalls.push(body);
-  const n = tokenCalls.length;
-  return new Response(
-    JSON.stringify({ access_token: `access-${n}`, refresh_token: `refresh-${n}`, expires_in: n === 1 ? 60 : 86_400, userType: "Location", companyId: "co_boutiqly", locationId: "loc_test_1", scope: "x" }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+const apiCalls: string[] = [];
+// Stands in for Boutiqly's API: OAuth tokens, a sub-account's users and its name.
+const boutiqlyUsers = [
+  { id: "u_owner", name: "Olive Owner", email: "olive@example.com", roles: { type: "account" } },
+  { id: "u_new", firstName: "Nina", lastName: "New", email: "nina@example.com", roles: { type: "account" } },
+  { id: "u_agency", name: "Katy Agency", email: "katy@example.com", roles: { type: "agency" } },
+  { id: "u_gone", name: "Gone", deleted: true, roles: { type: "account" } },
+];
+const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+const fakeFetch = (async (url: string, init: RequestInit = {}) => {
+  const path = url.replace("https://api.test", "");
+  if (path === "/oauth/token") {
+    const body = new URLSearchParams(init.body as URLSearchParams);
+    tokenCalls.push(body);
+    const n = tokenCalls.length;
+    return json({ access_token: `access-${n}`, refresh_token: `refresh-${n}`, expires_in: n === 1 ? 60 : 86_400, userType: "Location", companyId: "co_boutiqly", locationId: "loc_test_1", scope: "x" });
+  }
+  apiCalls.push(path);
+  if (path.startsWith("/users/?locationId=loc_test_1")) return json({ users: boutiqlyUsers });
+  if (path === "/locations/loc_test_1") return json({ location: { id: "loc_test_1", name: "Test Boutique" } });
+  return new Response("not found", { status: 404 });
 }) as unknown as typeof fetch;
+
+async function install() {
+  const res = await t.app.inject({ url: "/oauth/callback?code=abc" });
+  expect(res.statusCode).toBe(200);
+}
 
 beforeEach(async () => {
   if (t) await t.pool.end();
   tokenCalls.length = 0;
+  apiCalls.length = 0;
   t = await testApp(fakeFetch);
 });
 afterAll(async () => {
@@ -143,10 +162,82 @@ describe("team and access", () => {
     expect(intruder.me.brand).toBeNull();
   });
 
-  it("only adds people who opened this tab, from the same agency", async () => {
+  it("won't add someone Boutiqly doesn't list in this sub-account", async () => {
+    await install();
     const { agency } = await setup();
     const res = await t.app.inject({ method: "PUT", url: "/api/team/u_nobody", headers: agency.headers, payload: { role: "team" } });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("won't add someone who only asked for access in a different sub-account", async () => {
+    await install();
+    const agency = await signInAs(t.app, people.agency);
+    const elsewhere = await signInAs(t.app, { ...people.other, activeLocation: "loc_other" });
+    await t.app.inject({ method: "POST", url: "/api/access-requests", headers: elsewhere.headers });
+    const res = await t.app.inject({ method: "PUT", url: "/api/team/u_other", headers: agency.headers, payload: { role: "team" } });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("setting up a shop from Boutiqly's user list", () => {
+  it("lists the sub-account's users, without agency users or people already on the team", async () => {
+    await install();
+    const agency = await signInAs(t.app, people.agency);
+    const res = await t.app.inject({ url: "/api/team/candidates", headers: agency.headers });
+    expect(res.json()).toEqual({
+      available: true,
+      people: [
+        { userId: "u_new", name: "Nina New", email: "nina@example.com", role: "candidate" },
+        { userId: "u_owner", name: "Olive Owner", email: "olive@example.com", role: "candidate" },
+      ],
+    });
+  });
+
+  it("lets Boutiqly's team name an owner who has never opened the tab", async () => {
+    await install();
+    const agency = await signInAs(t.app, people.agency);
+    const res = await t.app.inject({ method: "PUT", url: "/api/team/u_new", headers: agency.headers, payload: { role: "owner" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().team).toEqual([expect.objectContaining({ userId: "u_new", name: "Nina New", role: "owner" })]);
+
+    // When Nina opens the tab later, she's the owner straight away.
+    const nina = await signInAs(t.app, { ...people.staff, userId: "u_new", userName: "Nina New", email: "nina@example.com" });
+    expect(nina.me.role).toBe("owner");
+    const candidates = (await t.app.inject({ url: "/api/team/candidates", headers: agency.headers })).json().people;
+    expect(candidates.map((p: { userId: string }) => p.userId)).toEqual(["u_owner"]);
+  });
+
+  it("refuses to put an agency user on the list", async () => {
+    await install();
+    const agency = await signInAs(t.app, people.agency);
+    const res = await t.app.inject({ method: "PUT", url: "/api/team/u_agency", headers: agency.headers, payload: { role: "team" } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("doesn't show the list to team members or people without access", async () => {
+    await install();
+    const other = await signInAs(t.app, people.other);
+    expect((await t.app.inject({ url: "/api/team/candidates", headers: other.headers })).statusCode).toBe(403);
+  });
+
+  it("explains when the app isn't installed in the sub-account", async () => {
+    const agency = await signInAs(t.app, people.agency);
+    const res = await t.app.inject({ url: "/api/team/candidates", headers: agency.headers });
+    expect(res.json()).toMatchObject({ available: false, people: [] });
+    expect(res.json().message).toContain("Install Social Studio");
+    const add = await t.app.inject({ method: "PUT", url: "/api/team/u_new", headers: agency.headers, payload: { role: "owner" } });
+    expect(add.statusCode).toBe(400);
+  });
+
+  it("shows the shop's real name once the app is installed", async () => {
+    const before = await signInAs(t.app, people.agency);
+    expect(before.me.brand.name).toBeNull();
+    await install();
+    const after = await signInAs(t.app, people.agency);
+    expect(after.me.brand.name).toBe("Test Boutique");
+    // Only asked once: it's saved after that.
+    await signInAs(t.app, people.agency);
+    expect(apiCalls.filter((p) => p.startsWith("/locations/"))).toHaveLength(1);
   });
 });
 

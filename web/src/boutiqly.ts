@@ -85,6 +85,7 @@ export const api = {
   me: () => call<SessionState>("/api/me"),
   requestAccess: () => call<{ ok: true }>("/api/access-requests", { method: "POST", body: "{}" }),
   team: () => call<{ team: TeamEntry[] }>("/api/team"),
+  candidates: () => call<{ available: boolean; people: TeamEntry[]; message?: string }>("/api/team/candidates"),
   setRole: (userId: string, role: "owner" | "team") =>
     call<{ team: TeamEntry[] }>(`/api/team/${encodeURIComponent(userId)}`, { method: "PUT", body: JSON.stringify({ role }) }),
   remove: (userId: string) =>

@@ -53,6 +53,6 @@ export interface TeamEntry {
   userId: string;
   name: string;
   email: string;
-  role: TeamRole | "requested";
+  role: TeamRole | "requested" | "candidate";
   requestedAt?: string;
 }

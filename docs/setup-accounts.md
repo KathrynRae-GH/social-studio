@@ -21,10 +21,10 @@ Private repo `social-studio` with the starter kit in it.
    - `charges.readonly` and `charges.write` (wallet billing, Milestone 6)
 
    If a name is slightly different in the list, tick the closest match and tell Claude. Scopes can be added later, but each change means reinstalling.
-4. **Shared Secret** (Advanced Settings → Auth → Shared Secret → Generate). Leave the tab open; it goes into Render in step 4.
-5. **Client keys** (Advanced Settings → Auth → Client Keys → Add). You get a **Client ID** and a **Client Secret**. The secret may only be shown once: leave the tab open or come back and make a new one when Render is ready.
+4. **Save** the scopes. The Auth page won't save without a Redirect URL, so if Render isn't set up yet, come back to this after step 4.
+5. **Client keys and Shared Secret** are under **Manage → Secrets** (not Build). Client Keys → Add gives a **Client ID** and a **Client Secret**, shown only once, so paste them into Render before clicking OK. Shared Secret Key → Generate. Both go into Render (service `social-studio` → Environment), never into chat.
 6. **Billing check** (App → Pricing): note whether a private app can turn on usage-based pricing and set up payouts, and what fee it shows. Tell Claude what you see (that's not secret).
-7. Leave the **Redirect URL** and the **Custom Page URL** empty for now. They need Render's web address (step 5).
+7. The **Redirect URL** (`https://social-studio-ohoa.onrender.com/oauth/callback`) and the **Custom Page URL** need Render's web address, so they're added after step 4.
 
 ## 3. Claude API key
 
@@ -35,6 +35,8 @@ Private repo `social-studio` with the starter kit in it.
 
 ## 4. Render (hosting): about $39 a month
 
+Live address: https://social-studio-ohoa.onrender.com (status page: `/health`).
+
 Do this after Claude's first pull request is merged into `main` (the blueprint file has to be on `main`).
 
 1. render.com → sign up **with GitHub** → add a card (Account → Billing).
@@ -43,7 +45,7 @@ Do this after Claude's first pull request is merged into `main` (the blueprint f
 4. Render asks for the secret values. Paste each from its own tab:
    - `BOUTIQLY_CLIENT_ID`, `BOUTIQLY_CLIENT_SECRET`, `BOUTIQLY_SHARED_SECRET` (step 2)
    - `BOUTIQLY_APP_ID`: the app's id from the portal (in the app's address bar or settings page)
-   - `BOUTIQLY_APP_DOMAINS`: the address you open Boutiqly at, e.g. `app.boutiqly.io` (no secret; Claude can fill this in with you)
+   - `BOUTIQLY_APP_DOMAINS`: `app.boutiqly.io` (without it the tab shows "refused to connect" inside Boutiqly)
    - `ANTHROPIC_API_KEY` (step 3)
    - Anything you don't have yet can stay empty and be added later under the service → **Environment**.
 5. **Apply.** The first build takes a few minutes. Then open `https://<your web address>.onrender.com/health`: it should say **Social Studio is up**, with Database **Connected** and Worker **Running**.

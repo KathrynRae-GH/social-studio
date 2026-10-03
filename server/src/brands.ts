@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "./db/pool.ts";
 import { accessRequests, auditLog, brands, teamMembers, users } from "./db/schema.ts";
 import type { UserContext } from "./auth/userContext.ts";
+import type { BoutiqlyUser } from "./boutiqly/api.ts";
 import { ROLE_LABELS, can, resolveRole, type Me, type Permission, type Role, type TeamEntry, type TeamRole } from "../../shared/roles.ts";
 
 export type Brand = typeof brands.$inferSelect;
@@ -154,13 +155,62 @@ export async function listTeam(db: Db, viewer: Viewer): Promise<TeamEntry[]> {
   ];
 }
 
-// Adds someone to the Team list or changes their role. Only people who have
-// opened this sub-account's tab can be added (we know them from Boutiqly's
-// own user context), and they must belong to the same agency.
-export async function setTeamRole(db: Db, viewer: Viewer, targetUserId: string, role: TeamRole): Promise<void> {
+// Boutiqly's own list of people with a login to this brand's sub-account.
+// Passed in so this file doesn't need to know how Boutiqly is called.
+export type SubAccountUsers = () => Promise<BoutiqlyUser[]>;
+
+async function hasAccessRequest(db: Db, brandId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: accessRequests.userId })
+    .from(accessRequests)
+    .where(and(eq(accessRequests.brandId, brandId), eq(accessRequests.userId, userId)));
+  return !!row;
+}
+
+// People who could be added to the Team list: this sub-account's Boutiqly
+// users who aren't agency users and aren't on the list already.
+export async function listCandidates(db: Db, viewer: Viewer, subAccountUsers: SubAccountUsers): Promise<TeamEntry[]> {
   const brand = requirePermission(viewer, "manage_team");
-  const [target] = await db.select().from(users).where(eq(users.id, targetUserId));
-  if (!target || target.companyId !== brand.companyId) throw new AccessError("That person hasn't opened this tab yet.", 404);
+  const onTeam = new Set(
+    (await db.select({ userId: teamMembers.userId }).from(teamMembers).where(eq(teamMembers.brandId, brand.id))).map(
+      (r) => r.userId,
+    ),
+  );
+  return (await subAccountUsers())
+    .filter((u) => !u.isAgency && !onTeam.has(u.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((u) => ({ userId: u.id, name: u.name, email: u.email, role: "candidate" as const }));
+}
+
+// Adds someone to the Team list or changes their role. They must be on the
+// list already, have asked for access in this brand's tab, or be a user of
+// this sub-account according to Boutiqly itself (checked here, never taken
+// from the browser).
+export async function setTeamRole(
+  db: Db,
+  viewer: Viewer,
+  targetUserId: string,
+  role: TeamRole,
+  subAccountUsers: SubAccountUsers,
+): Promise<void> {
+  const brand = requirePermission(viewer, "manage_team");
+  let [target] = await db.select().from(users).where(eq(users.id, targetUserId));
+  const known =
+    !!target &&
+    target.companyId === brand.companyId &&
+    ((await teamRoleOf(db, brand.id, targetUserId)) !== null || (await hasAccessRequest(db, brand.id, targetUserId)));
+
+  if (!known) {
+    const fromBoutiqly = (await subAccountUsers()).find((u) => u.id === targetUserId);
+    if (!fromBoutiqly) throw new AccessError("That person isn't a user of this sub-account in Boutiqly.", 404);
+    if (fromBoutiqly.isAgency) throw new AccessError("Boutiqly's team already has full access.", 400);
+    [target] = await db
+      .insert(users)
+      .values({ id: fromBoutiqly.id, companyId: brand.companyId, name: fromBoutiqly.name, email: fromBoutiqly.email })
+      .onConflictDoUpdate({ target: users.id, set: { name: fromBoutiqly.name, email: fromBoutiqly.email } })
+      .returning();
+  }
+  if (!target) throw new AccessError("That person isn't a user of this sub-account in Boutiqly.", 404);
   if (target.isAgency) throw new AccessError("Boutiqly's team already has full access.", 400);
 
   await db.transaction(async (tx) => {
@@ -173,6 +223,13 @@ export async function setTeamRole(db: Db, viewer: Viewer, targetUserId: string, 
       .where(and(eq(accessRequests.brandId, brand.id), eq(accessRequests.userId, targetUserId)));
   });
   await audit(db, viewer, "team.set_role", { userId: targetUserId, name: target.name, role });
+}
+
+// Saves the shop's name from Boutiqly the first time we learn it.
+export async function saveBrandName(db: Db, brand: Brand, name: string): Promise<void> {
+  if (brand.name === name) return;
+  await db.update(brands).set({ name }).where(eq(brands.id, brand.id));
+  brand.name = name;
 }
 
 export async function removeFromTeam(db: Db, viewer: Viewer, targetUserId: string): Promise<void> {
