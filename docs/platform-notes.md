@@ -22,6 +22,9 @@ Naming: in this repo the platform is always "Boutiqly" (see `CLAUDE.md`). The de
 
 ## Who's looking (user context), as built Oct 3, 2026
 
+- Boutiqly's app address is **`app.boutiqly.io`**. It must be in `BOUTIQLY_APP_DOMAINS` in Render, or the tab shows "refused to connect" inside Boutiqly. Custom pages load at `app.boutiqly.io/v2/location/<locationId>/custom-page-link/<id>`.
+- Test install: sub-account **Test Boutique** (Dallas, TX).
+
 From the platform's official marketplace app template (its GitHub repo; the developer docs site is blocked from Claude's sandbox):
 
 - The tab sends `{ message: "REQUEST_USER_DATA" }` to the Boutiqly page around it with `postMessage`; Boutiqly answers with `{ message: "REQUEST_USER_DATA_RESPONSE", payload }`.

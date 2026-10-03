@@ -45,7 +45,7 @@ Do this after Claude's first pull request is merged into `main` (the blueprint f
 4. Render asks for the secret values. Paste each from its own tab:
    - `BOUTIQLY_CLIENT_ID`, `BOUTIQLY_CLIENT_SECRET`, `BOUTIQLY_SHARED_SECRET` (step 2)
    - `BOUTIQLY_APP_ID`: the app's id from the portal (in the app's address bar or settings page)
-   - `BOUTIQLY_APP_DOMAINS`: the address you open Boutiqly at, e.g. `app.boutiqly.io` (no secret; Claude can fill this in with you)
+   - `BOUTIQLY_APP_DOMAINS`: `app.boutiqly.io` (without it the tab shows "refused to connect" inside Boutiqly)
    - `ANTHROPIC_API_KEY` (step 3)
    - Anything you don't have yet can stay empty and be added later under the service → **Environment**.
 5. **Apply.** The first build takes a few minutes. Then open `https://<your web address>.onrender.com/health`: it should say **Social Studio is up**, with Database **Connected** and Worker **Running**.
