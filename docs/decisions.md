@@ -40,4 +40,8 @@ Claude (technical):
 - **Install tokens** are encrypted with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`) and refreshed five minutes before they expire.
 - **Render region:** Ohio for all three pieces (closest to Dallas and to the platform's US servers).
 - **Worker health:** the worker writes a heartbeat every 30 seconds; the health page shows it. A quiet worker doesn't fail the web service's health check, so Render won't restart the tab over a worker problem.
+- **Agency admins set up each shop (Katy, Oct 3).** Boutiqly's team (and owners) pick people for the Team list from the sub-account's own Boutiqly users, read live with the install token; the server re-checks with Boutiqly before adding anyone. People no longer have to open the tab first. "Ask for access" stays for staff who open it before being added. Someone who only asked in a different sub-account can't be added here.
+- **Set up this shop checklist** on the Calendar for Boutiqly's team and owners: name the owner (live now), capture the brand and connect social accounts (shown as "Coming soon" until built).
+- **Shop name** is read from Boutiqly the first time the tab opens in a sub-account and saved.
+- Girl Riot Society is Katy's own; fine for the tab to show there during the build.
 

@@ -3,6 +3,7 @@ import type { Me } from "../../../shared/roles.ts";
 import { AskClaude } from "./AskClaude.tsx";
 import { EmptyScreen } from "../screens/EmptyScreen.tsx";
 import { BrandScreen } from "../screens/BrandScreen.tsx";
+import { SetupChecklist } from "./SetupChecklist.tsx";
 
 const SCREENS = ["Calendar", "Library", "Assets", "Ideas", "Brand"] as const;
 type Screen = (typeof SCREENS)[number];
@@ -17,6 +18,8 @@ const EMPTY_TEXT: Record<Exclude<Screen, "Brand">, string> = {
 export function Shell({ me }: { me: Me }) {
   const [screen, setScreen] = useState<Screen>("Calendar");
   const [askOpen, setAskOpen] = useState(false);
+  const [hasOwner, setHasOwner] = useState(!!me.brand?.hasOwner);
+  const showSetup = me.permissions.includes("manage_team");
 
   return (
     <div className="shell">
@@ -43,7 +46,12 @@ export function Shell({ me }: { me: Me }) {
       </nav>
 
       <main className="screen">
-        {screen === "Brand" ? <BrandScreen me={me} /> : <EmptyScreen title={screen} text={EMPTY_TEXT[screen]} />}
+        {screen === "Calendar" && showSetup && <SetupChecklist hasOwner={hasOwner} onOpenTeam={() => setScreen("Brand")} />}
+        {screen === "Brand" ? (
+          <BrandScreen me={me} onTeamChange={(team) => setHasOwner(team.some((t) => t.role === "owner"))} />
+        ) : (
+          <EmptyScreen title={screen} text={EMPTY_TEXT[screen]} />
+        )}
       </main>
 
       {askOpen && <AskClaude onClose={() => setAskOpen(false)} />}

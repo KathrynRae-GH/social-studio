@@ -12,13 +12,18 @@ import {
   AccessError,
   describeViewer,
   hasRequestedAccess,
+  listCandidates,
   listTeam,
   loadViewer,
   removeFromTeam,
   requestAccess,
+  saveBrandName,
   setTeamRole,
+  type Brand,
+  type SubAccountUsers,
   type Viewer,
 } from "./brands.ts";
+import { NotInstalledError, getLocationName, listLocationUsers } from "./boutiqly/api.ts";
 import { completeInstall } from "./boutiqly/installs.ts";
 import { healthReport, healthPage } from "./health.ts";
 
@@ -55,6 +60,7 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AccessError) return reply.code(err.statusCode).send({ error: err.message });
+    if (err instanceof NotInstalledError) return reply.code(400).send({ error: err.message });
     if (err instanceof UserContextError) return reply.code(401).send({ error: "We couldn't confirm who you are. Reload the page in Boutiqly." });
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.code(status).send({ error: (err as Error).message });
@@ -68,6 +74,10 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
     const ctx = token ? verifySessionToken(token, config.sessionSigningKey) : null;
     if (!ctx) throw new AccessError("Your session ended. Reload the page in Boutiqly.", 401);
     return loadViewer(db, ctx);
+  }
+
+  function subAccountUsers(brand: Brand): SubAccountUsers {
+    return () => listLocationUsers(db, config, brand.locationId, brand.companyId, fetchImpl);
   }
 
   // ---- Health ----
@@ -92,6 +102,16 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
       throw err;
     }
     const viewer = await loadViewer(db, ctx);
+    // The shop's name comes from Boutiqly the first time the tab opens there.
+    // Not knowing it yet isn't a reason to keep anyone waiting.
+    if (viewer.brand && !viewer.brand.name) {
+      try {
+        const name = await getLocationName(db, config, viewer.brand.locationId, viewer.brand.companyId, fetchImpl);
+        if (name) await saveBrandName(db, viewer.brand, name);
+      } catch (err) {
+        req.log.info({ reason: (err as Error).message }, "Shop name not available yet");
+      }
+    }
     return {
       token: createSessionToken(ctx, config.sessionSigningKey),
       expiresIn: SESSION_TTL_SECONDS,
@@ -114,11 +134,29 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
   // ---- Team list ----
   app.get("/api/team", async (req) => ({ team: await listTeam(db, await viewerFrom(req)) }));
 
+  // People in this sub-account who could be added to the Team list.
+  app.get("/api/team/candidates", async (req) => {
+    const viewer = await viewerFrom(req);
+    if (!viewer.brand) throw new AccessError("Open Social Studio from inside a sub-account.", 400);
+    try {
+      return { available: true, people: await listCandidates(db, viewer, subAccountUsers(viewer.brand)) };
+    } catch (err) {
+      if (err instanceof AccessError) throw err;
+      req.log.warn({ reason: (err as Error).message }, "Couldn't list sub-account users");
+      const message =
+        err instanceof NotInstalledError
+          ? "Install Social Studio in this sub-account to pick people from its Boutiqly users."
+          : "Boutiqly didn't send the user list just now. Try again in a minute.";
+      return { available: false, people: [], message };
+    }
+  });
+
   app.put<{ Params: { userId: string }; Body: { role?: string } }>("/api/team/:userId", async (req) => {
     const role = req.body?.role;
     if (role !== "owner" && role !== "team") throw new AccessError("Role must be owner or team.", 400);
     const viewer = await viewerFrom(req);
-    await setTeamRole(db, viewer, req.params.userId, role);
+    if (!viewer.brand) throw new AccessError("Open Social Studio from inside a sub-account.", 400);
+    await setTeamRole(db, viewer, req.params.userId, role, subAccountUsers(viewer.brand));
     return { team: await listTeam(db, viewer) };
   });
 

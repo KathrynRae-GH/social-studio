@@ -78,3 +78,40 @@ export async function isInstalled(db: Db, locationId: string): Promise<boolean> 
   const [row] = await db.select({ id: installs.resourceId }).from(installs).where(eq(installs.resourceId, locationId));
   return !!row;
 }
+
+// When Social Studio was installed for the whole agency rather than one
+// sub-account, Boutiqly can hand out a sub-account token from the agency's.
+// Those are kept in memory only and fetched again when they expire.
+const derivedTokens = new Map<string, { token: string; expiresAt: number }>();
+
+export async function locationAccessToken(
+  db: Db,
+  config: Config,
+  locationId: string,
+  companyId: string,
+  fetchImpl: Fetch = fetch,
+): Promise<string | null> {
+  const direct = await accessTokenFor(db, config, locationId, fetchImpl);
+  if (direct) return direct;
+
+  const cached = derivedTokens.get(locationId);
+  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) return cached.token;
+
+  const agencyToken = await accessTokenFor(db, config, companyId, fetchImpl);
+  if (!agencyToken) return null;
+  const res = await fetchImpl(`${config.boutiqly.apiBase}/oauth/locationToken`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${agencyToken}`,
+      version: "2021-07-28",
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+    },
+    body: new URLSearchParams({ companyId, locationId }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!data.access_token) return null;
+  derivedTokens.set(locationId, { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 });
+  return data.access_token;
+}
