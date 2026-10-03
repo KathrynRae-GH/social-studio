@@ -11,13 +11,18 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-FRAME_URL = "https://frame.render.local/"
+# Local development only: the stand-in for Boutiqly serves files over http,
+# so the frame is served over http too (no mixed-content blocking).
+ALLOW_HTTP = os.environ.get("RENDER_ALLOW_HTTP") == "1"
+FRAME_URL = "http://frame.render.local/" if ALLOW_HTTP else "https://frame.render.local/"
 FONT_HOSTS = {"fonts.googleapis.com", "fonts.gstatic.com"}
 MAX_SIDE = 2400
+WAIT_MS = 15_000
 
 
 def csp(allowed_hosts: list[str]) -> str:
-    imgs = " ".join(f"https://{h}" for h in allowed_hosts)
+    schemes = ["https", "http"] if ALLOW_HTTP else ["https"]
+    imgs = " ".join(f"{s}://{h}" for h in allowed_hosts for s in schemes)
     return (
         "default-src 'none'; script-src 'none'; "
         f"img-src data: {imgs}; "
@@ -26,9 +31,40 @@ def csp(allowed_hosts: list[str]) -> str:
     )
 
 
+# Google Fonts files fetched once per worker. The worker fetches them itself
+# (with a time limit) so a slow font host can't stall a render: Chromium
+# waits for fonts before every screenshot.
+_font_cache: dict[str, tuple[str, bytes]] = {}
+
+
+def _fetch_font(url: str, user_agent: str) -> tuple[str, bytes] | None:
+    import urllib.request
+
+    if url in _font_cache:
+        return _font_cache[url]
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": user_agent})
+        with urllib.request.urlopen(req, timeout=10) as res:  # noqa: S310 - Google Fonts only
+            item = (res.headers.get("Content-Type", "application/octet-stream"), res.read(5 * 1024 * 1024))
+    except Exception as exc:  # noqa: BLE001
+        print(f"Font not loaded ({exc}); the fallback font is used", flush=True)
+        return None
+    if len(_font_cache) < 500:
+        _font_cache[url] = item
+    return item
+
+
 def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list[str]):
     def route(r) -> None:
         url = r.request.url
+        parsed = urlparse(url)
+        if parsed.scheme == "https" and parsed.netloc in FONT_HOSTS:
+            got = _fetch_font(url, r.request.headers.get("user-agent", "Mozilla/5.0"))
+            if got is None:
+                r.abort()
+            else:
+                r.fulfill(status=200, content_type=got[0], body=got[1], headers={"Access-Control-Allow-Origin": "*"})
+            return
         if url == FRAME_URL:
             r.fulfill(
                 status=200,
@@ -37,8 +73,8 @@ def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list
                 body=doc,
             )
             return
-        parsed = urlparse(url)
-        if parsed.scheme == "https" and parsed.hostname in allowed:
+        scheme_ok = parsed.scheme == "https" or (ALLOW_HTTP and parsed.scheme == "http")
+        if scheme_ok and parsed.netloc in allowed:
             r.continue_()
         else:
             blocked.append(url)
@@ -49,31 +85,49 @@ def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list
 
 def render_frames(docs: list[str], width: int, height: int, allowed_hosts: list[str]) -> tuple[list[bytes], list[str]]:
     """Returns (png bytes per frame, urls that were blocked)."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
 
     if not (0 < width <= MAX_SIDE and 0 < height <= MAX_SIDE):
         raise ValueError("Frame size out of range")
     allowed = set(allowed_hosts) | FONT_HOSTS
     blocked: list[str] = []
+    slow: list[str] = []
     pngs: list[bytes] = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH") or None)
+        # Local development only: let the frame load files from localhost.
+        args = ["--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks"] if ALLOW_HTTP else []
+        browser = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH") or None, args=args)
         try:
             context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1)
             for doc in docs:
                 page = context.new_page()
                 page.route("**/*", _router(doc, allowed, allowed_hosts, blocked))
-                page.goto(FRAME_URL, wait_until="networkidle", timeout=45_000)
-                # Fonts and photos fully loaded before the picture is taken.
-                page.evaluate("document.fonts.ready.then(() => true)")
-                page.evaluate(
-                    "Promise.all([...document.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = i.onerror = r; })))"
+                page.goto(FRAME_URL, wait_until="domcontentloaded", timeout=30_000)
+                # Fonts and photos loaded before the picture is taken, with a
+                # time limit each so a slow host can't hang the worker.
+                try:
+                    page.wait_for_load_state("load", timeout=WAIT_MS)
+                except PlaywrightTimeout:
+                    slow.append("page")
+                done = page.evaluate(
+                    f"""Promise.race([
+                      Promise.all([
+                        document.fonts.ready,
+                        ...[...document.images].map(i => i.complete ? 1 : new Promise(r => {{ i.onload = i.onerror = r; }}))
+                      ]).then(() => true),
+                      new Promise(r => setTimeout(() => r(false), {WAIT_MS}))
+                    ])"""
                 )
+                if not done:
+                    slow.append("fonts or images")
                 pngs.append(page.screenshot(type="png", clip={"x": 0, "y": 0, "width": width, "height": height}))
                 page.close()
             context.close()
         finally:
             browser.close()
+    if slow:
+        print(f"Render finished with slow parts: {', '.join(sorted(set(slow)))}", flush=True)
     return pngs, blocked
 
 

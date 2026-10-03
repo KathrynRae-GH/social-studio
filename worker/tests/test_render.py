@@ -41,7 +41,7 @@ def test_outside_images_never_load():
 
 class FakeRoute:
     def __init__(self, url):
-        self.request = type("R", (), {"url": url})()
+        self.request = type("R", (), {"url": url, "headers": {}})()
         self.outcome = None
 
     def fulfill(self, **_kw):
@@ -54,13 +54,17 @@ class FakeRoute:
         self.outcome = "aborted"
 
 
-def test_router_only_lets_through_the_frame_fonts_and_listed_hosts():
+def test_router_only_lets_through_the_frame_fonts_and_listed_hosts(monkeypatch):
+    import worker.render as render
+
+    monkeypatch.setattr(render, "_fetch_font", lambda url, ua: ("font/woff2", b"x") if "ok" in url else None)
     blocked = []
     route = _router("<p>hi</p>", {"cdn.shop.test", "fonts.gstatic.com"}, ["cdn.shop.test"], blocked)
     cases = {
         "https://frame.render.local/": "fulfilled",
         "https://cdn.shop.test/photo.jpg": "continued",
-        "https://fonts.gstatic.com/x.woff2": "continued",
+        "https://fonts.gstatic.com/ok.woff2": "fulfilled",  # fetched by the worker itself
+        "https://fonts.gstatic.com/down.woff2": "aborted",  # font host failed: fallback font
         "http://cdn.shop.test/photo.jpg": "aborted",
         "https://evil.test/steal": "aborted",
     }

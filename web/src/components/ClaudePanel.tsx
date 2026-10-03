@@ -19,11 +19,15 @@ export function ClaudePanel({ me }: { me: Me }) {
 
   async function save(input: Partial<{ enabled: boolean; capCents: number }>) {
     setError("");
+    const before = status;
+    // Flip straight away; flip back if the server says no.
+    if (input.enabled !== undefined && status) setStatus({ ...status, enabled: input.enabled });
     try {
       const s = await api.setClaude(input);
       setStatus(s);
       setCap(String(s.capCents / 100));
     } catch (e) {
+      setStatus(before);
       setError((e as Error).message);
     }
   }

@@ -119,7 +119,7 @@ export function LookPanel({ me }: { me: Me }) {
           {draft.colors.map((c, i) => (
             <div key={i} className="color-row">
               <input type="color" value={c.hex} onChange={(e) => setColor(i, { hex: e.target.value })} disabled={!canEdit} aria-label={`${c.name || "Color"} value`} />
-              <input value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Name" maxLength={40} disabled={!canEdit} aria-label="Color name" />
+              <input type="text" value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Name" maxLength={40} disabled={!canEdit} aria-label="Color name" />
               <select value={c.role} onChange={(e) => setColor(i, { role: e.target.value as StyleColor["role"] })} disabled={!canEdit} aria-label="Color use">
                 {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
               </select>

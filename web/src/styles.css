@@ -118,7 +118,7 @@ button { font-family: inherit; cursor: pointer; }
 .sample-frame iframe { border: 0; display: block; }
 .color-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .color-row input[type="color"] { width: 44px; height: 36px; padding: 2px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
-.color-row input:not([type]) { flex: 1 1 120px; min-width: 0; }
+.color-row input[type="text"] { flex: 1 1 120px; min-width: 0; }
 
 /* Assets */
 .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
@@ -198,7 +198,7 @@ h3 { font-size: 16px; }
 .sheet-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
 .field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; font-size: 14px; font-weight: 600; }
 .field.grow { flex: 1 1 260px; }
-.field input, .field select, .field textarea, .field-row input, select {
+.field input, .field select, .field textarea, .field-row input, .color-row input[type="text"], .ask-form textarea, select {
   font: inherit; font-weight: 400; color: var(--text); background: var(--white);
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
 }
@@ -265,3 +265,4 @@ h3 { font-size: 16px; }
   .month-item { font-size: 10px; }
   .entry-thumb { width: 56px; height: 70px; }
 }
+.ask-panel select { width: 100%; min-width: 0; }
