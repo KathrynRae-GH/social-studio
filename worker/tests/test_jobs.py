@@ -8,7 +8,7 @@ DB = os.environ.get("TEST_DATABASE_URL")
 
 
 def test_ping():
-    assert ping({"echo": "hi"}) == {"pong": True, "echo": "hi"}
+    assert ping(None, "j", {"echo": "hi"}) == {"pong": True, "echo": "hi"}
 
 
 def test_retry_delay_grows():
@@ -41,7 +41,7 @@ def test_runs_a_queued_job(conn):
 
 
 def test_failing_job_retries_then_fails(conn):
-    def boom(_payload):
+    def boom(_conn, _job_id, _payload):
         raise RuntimeError("nope")
 
     conn.execute("INSERT INTO jobs (kind) VALUES ('boom')")
@@ -55,8 +55,8 @@ def test_failing_job_retries_then_fails(conn):
         assert status == ("failed" if attempt == MAX_ATTEMPTS else "queued")
 
 
-def test_unknown_kind_fails_at_once(conn):
-    conn.execute("INSERT INTO jobs (kind) VALUES ('mystery')")
+def test_leaves_kinds_it_cannot_do_for_another_worker(conn):
+    conn.execute("INSERT INTO jobs (kind) VALUES ('render')")
     conn.commit()
-    run_one(conn)
-    assert conn.execute("SELECT status FROM jobs").fetchone()[0] == "failed"
+    assert run_one(conn) is False
+    assert conn.execute("SELECT status FROM jobs").fetchone()[0] == "queued"

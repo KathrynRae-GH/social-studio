@@ -54,17 +54,16 @@ services:
       - key: CREDIT_MARKUP
         value: "2"
 
+  # The worker runs in a Docker image (worker/Dockerfile) so headless Chromium
+  # and its system libraries are available for rendering designs.
   - type: worker
     name: social-studio-worker
-    runtime: python
+    runtime: docker
     plan: standard
     region: ohio
     branch: main
-    rootDir: worker
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m worker.main
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: ./worker
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.15
       - key: DATABASE_URL
         fromDatabase: { name: social-studio-db, property: connectionString }

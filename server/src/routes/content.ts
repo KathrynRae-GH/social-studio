@@ -23,9 +23,9 @@ import {
   type CalendarDeps,
 } from "../calendar.ts";
 import { buildPack } from "../packs.ts";
+import { storeFile } from "../media.ts";
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
-const MEDIA_FOLDER = "Social Studio";
 
 interface Deps {
   db: Db;
@@ -52,14 +52,8 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
       throw new AccessError("That file is over 100 MB. Make it smaller and try again.", 413);
     });
 
-    const client = clientFor(brand);
-    let folderId = brand.mediaFolderId;
-    if (!folderId) {
-      folderId = await client.createFolder(MEDIA_FOLDER);
-      await db.update(brands).set({ mediaFolderId: folderId }).where(eq(brands.id, brand.id));
-    }
     const name = file.filename.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "upload";
-    const uploaded = await client.uploadFile(new Blob([new Uint8Array(buffer)], { type: file.mimetype }), name, folderId);
+    const uploaded = await storeFile(db, brand, clientFor(brand), { bytes: new Uint8Array(buffer), mime: file.mimetype, name });
     return {
       asset: await addAsset(db, viewer, {
         boutiqlyFileId: uploaded.fileId,

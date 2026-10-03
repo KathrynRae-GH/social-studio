@@ -1,6 +1,7 @@
 // Typed view of the tables created by the SQL files in server/migrations.
 // The migrations are the source of truth; keep this file in step with them.
-import { pgTable, text, uuid, timestamp, boolean, bigserial, bigint, integer, jsonb, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, boolean, bigserial, bigint, integer, jsonb, numeric, primaryKey } from "drizzle-orm/pg-core";
+import type { Design, SensitiveFlag, StyleColor } from "../../../shared/design.ts";
 
 export const brands = pgTable("brands", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -10,6 +11,8 @@ export const brands = pgTable("brands", {
   timezone: text("timezone"),
   livePosting: boolean("live_posting").notNull().default(false),
   mediaFolderId: text("media_folder_id"),
+  claudeEnabled: boolean("claude_enabled").notNull().default(false),
+  claudeCapCents: integer("claude_cap_cents").notNull().default(2000),
   syncedAt: timestamp("synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -85,6 +88,16 @@ export const assets = pgTable("assets", {
   sizeBytes: bigint("size_bytes", { mode: "number" }),
   uploadedBy: text("uploaded_by").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
+  description: text("description").notNull().default(""),
+  tags: text("tags").array().notNull().default([]),
+  hasPeople: boolean("has_people"),
+  possibleMinor: boolean("possible_minor").notNull().default(false),
+  sensitive: jsonb("sensitive").$type<SensitiveFlag[]>().notNull().default([]),
+  flagsCleared: boolean("flags_cleared").notNull().default(false),
+  peopleRule: text("people_rule", { enum: ["ok", "no_faces", "dont_use"] }).notNull().default("ok"),
+  taggedAt: ts("tagged_at"),
+  sourceAssetId: uuid("source_asset_id"),
+  madeBy: text("made_by", { enum: ["upload", "render", "blur"] }).notNull().default("upload"),
 });
 
 export const pieces = pgTable("pieces", {
@@ -95,6 +108,8 @@ export const pieces = pgTable("pieces", {
   assetIds: uuid("asset_ids").array().notNull().default([]),
   link: text("link").notNull().default(""),
   archived: boolean("archived").notNull().default(false),
+  source: text("source", { enum: ["owner", "claude"] }).notNull().default("owner"),
+  design: jsonb("design").$type<Design | null>(),
   createdBy: text("created_by").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -165,5 +180,75 @@ export const events = pgTable("events", {
   startsAt: ts("starts_at").notNull(),
   link: text("link").notNull().default(""),
   canceled: boolean("canceled").notNull().default(false),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const usageLedger = pgTable("usage_ledger", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  brandId: uuid("brand_id").notNull(),
+  userId: text("user_id").notNull(),
+  purpose: text("purpose").notNull(),
+  refId: text("ref_id"),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+  cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+  webSearches: integer("web_searches").notNull().default(0),
+  costCents: numeric("cost_cents").notNull(),
+  credits: numeric("credits").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const styleSets = pgTable("style_sets", {
+  brandId: uuid("brand_id").primaryKey(),
+  logoAssetId: uuid("logo_asset_id"),
+  colors: jsonb("colors").$type<StyleColor[]>().notNull().default([]),
+  headingFont: text("heading_font").notNull().default("Montserrat"),
+  bodyFont: text("body_font").notNull().default("Montserrat"),
+  vibe: text("vibe").notNull().default(""),
+  dosDonts: text("dos_donts").notNull().default(""),
+  status: text("status", { enum: ["draft", "approved"] }).notNull().default("draft"),
+  approvedBy: text("approved_by"),
+  approvedAt: ts("approved_at"),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+export const renderOutputs = pgTable("render_outputs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id").notNull(),
+  frame: integer("frame").notNull(),
+  mime: text("mime").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+export const conversationMessages = pgTable("conversation_messages", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  conversationId: uuid("conversation_id").notNull(),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: jsonb("content").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const proposals = pgTable("proposals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull(),
+  conversationId: uuid("conversation_id"),
+  kind: text("kind").notNull(),
+  summary: text("summary").notNull(),
+  payload: jsonb("payload").notNull(),
+  status: text("status", { enum: ["open", "applied", "dismissed"] }).notNull().default("open"),
+  decidedBy: text("decided_by"),
+  decidedAt: ts("decided_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });

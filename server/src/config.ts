@@ -21,6 +21,9 @@ export interface Config {
     apiBase: string;
   };
   claudeModel: string;
+  anthropicApiKey: string;
+  // Studio credits per cent of Claude cost (1 credit = 1 cent of Claude cost x markup)
+  creditMarkup: number;
   walletBillingMode: "off" | "test" | "live";
 }
 
@@ -57,6 +60,8 @@ export function loadConfig(): Config {
       apiBase: read("BOUTIQLY_API_BASE", "https://services.leadconnectorhq.com"),
     },
     claudeModel: read("CLAUDE_MODEL", "claude-opus-5-5"),
+    anthropicApiKey: read("ANTHROPIC_API_KEY"),
+    creditMarkup: Number(read("CREDIT_MARKUP", "2")) || 2,
     walletBillingMode: (["off", "test", "live"].includes(read("WALLET_BILLING_MODE"))
       ? read("WALLET_BILLING_MODE")
       : "off") as Config["walletBillingMode"],
@@ -77,5 +82,34 @@ export function missingSettings(config: Config): string[] {
   if (!config.boutiqly.sharedSecret) missing.push("BOUTIQLY_SHARED_SECRET");
   if (!config.boutiqly.clientId) missing.push("BOUTIQLY_CLIENT_ID");
   if (!config.boutiqly.clientSecret) missing.push("BOUTIQLY_CLIENT_SECRET");
+  if (!config.anthropicApiKey) missing.push("ANTHROPIC_API_KEY");
   return missing;
 }
+
+// Claude's prices in US dollars per million tokens, so credits follow the
+// real cost when the model changes. Check against Anthropic's pricing page
+// when adding a model. Cache writes are the 5-minute kind (1.25x input).
+export interface ModelPrice {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export const CLAUDE_PRICES: Record<string, ModelPrice> = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-fable-5-1": { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
+  "claude-fable-5": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+};
+
+// A model missing from the table is charged at the highest price we know,
+// so a gap never makes Claude look cheaper than it is.
+export const UNKNOWN_MODEL_PRICE: ModelPrice = { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 };
+
+export const WEB_SEARCH_DOLLARS_PER_1000 = 10;
