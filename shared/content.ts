@@ -43,6 +43,8 @@ export interface EntryView {
   sentFrames: number;
   lastError: string | null;
   dryRun: boolean; // approved while live posting was off: nothing sent
+  draftsSent: number; // drafts made in Boutiqly's social planner (they never publish)
+  draftSentAt: string | null;
   routeNote: string | null;
 }
 
@@ -69,6 +71,11 @@ export interface IdeaView {
   format: string;
   status: "now" | "later" | "built" | "done";
   pieceId: string | null;
+}
+
+export interface DraftResult {
+  entry: EntryView;
+  alreadySent: boolean;
 }
 
 export interface ApproveResult {

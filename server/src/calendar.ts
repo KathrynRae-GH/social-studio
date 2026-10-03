@@ -14,7 +14,7 @@ import { getPieceRow } from "./library.ts";
 import { BoutiqlyError, plannerMediaType, type BoutiqlyClient, type PlannerPostInput, type SocialAccount } from "./boutiqly/api.ts";
 import { channel, routeFor, type Kind, type Route } from "../../shared/channels.ts";
 import { DEFAULT_TIME_ZONE, utcToZoned, zonedToUtc } from "../../shared/time.ts";
-import type { AccountView, ApproveResult, CalendarData, EntryView } from "../../shared/content.ts";
+import type { AccountView, ApproveResult, CalendarData, DraftResult, EntryView } from "../../shared/content.ts";
 
 type Entry = typeof calendarEntries.$inferSelect;
 type Piece = typeof pieces.$inferSelect;
@@ -213,6 +213,8 @@ async function entryViews(deps: CalendarDeps, brand: Brand, rows: Entry[]): Prom
       sentFrames: e.plannerPostIds.length,
       lastError: e.lastError,
       dryRun: !!e.dryRun,
+      draftsSent: e.plannerDraftIds.filter(Boolean).length,
+      draftSentAt: e.draftSentAt ? e.draftSentAt.toISOString() : null,
       routeNote:
         e.route === "pack" && channel(e.channel)?.plannerPlatform && !e.plannerAccountId
           ? `${channel(e.channel)?.name} isn't connected in Boutiqly's social planner, so this is a ready-to-post pack.`
@@ -390,6 +392,25 @@ async function withEntryLock<T>(pool: pg.Pool, entryId: string, fn: () => Promis
   }
 }
 
+async function entryContent(deps: CalendarDeps, brand: Brand, entry: Entry) {
+  const piece = await getPieceRow(deps.db, brand, entry.pieceId);
+  const mediaRows = piece.assetIds.length
+    ? await deps.db.select().from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, piece.assetIds)))
+    : [];
+  const media = piece.assetIds.map((id) => mediaRows.find((a) => a.id === id)).filter((a): a is Asset => !!a);
+  const [captionRow] = await deps.db
+    .select()
+    .from(captions)
+    .where(and(eq(captions.pieceId, piece.id), eq(captions.channel, entry.channel)));
+  return { piece, media, caption: captionRow ?? null };
+}
+
+async function plannerAccountFor(deps: CalendarDeps, brand: Brand, entry: Entry): Promise<string> {
+  const accountId = entry.plannerAccountId ?? accountFor(await socialAccounts(deps, brand, true), entry.channel)?.id ?? null;
+  if (!accountId) throw new AccessError(`Connect ${channel(entry.channel)?.name} in Boutiqly's social planner first.`, 400);
+  return accountId;
+}
+
 export async function approveEntry(deps: CalendarDeps, viewer: Viewer, entryId: string): Promise<ApproveResult> {
   const brand = requirePermission(viewer, "use_tab");
   return withEntryLock(deps.pool, entryId, async () => {
@@ -397,17 +418,8 @@ export async function approveEntry(deps: CalendarDeps, viewer: Viewer, entryId: 
     const retryable = entry.status === "suggested" || entry.status === "needs_attention" || (entry.status === "approved" && !!entry.dryRun);
     if (!retryable) throw new AccessError("This one has already been approved.", 400);
 
-    const piece = await getPieceRow(deps.db, brand, entry.pieceId);
-    const mediaRows = piece.assetIds.length
-      ? await deps.db.select().from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, piece.assetIds)))
-      : [];
-    const media = piece.assetIds.map((id) => mediaRows.find((a) => a.id === id)).filter((a): a is Asset => !!a);
-    const [caption] = await deps.db
-      .select()
-      .from(captions)
-      .where(and(eq(captions.pieceId, piece.id), eq(captions.channel, entry.channel)));
-
-    const problems = problemsFor(entry.channel, piece.kind as Kind, media, caption ?? null);
+    const { piece, media, caption } = await entryContent(deps, brand, entry);
+    const problems = problemsFor(entry.channel, piece.kind as Kind, media, caption);
     if (problems.length) throw new AccessError(problems.join(" "), 400);
     const now = (deps.now ?? (() => new Date()))();
     const approved = { approvedBy: viewer.ctx.userId, approvedAt: now, updatedAt: now };
@@ -421,12 +433,8 @@ export async function approveEntry(deps: CalendarDeps, viewer: Viewer, entryId: 
     if (entry.scheduledAt.getTime() < now.getTime() + 60_000) {
       throw new AccessError("That time has already passed. Move it to a time in the future first.", 400);
     }
-    let accountId = entry.plannerAccountId;
-    if (!accountId) {
-      accountId = accountFor(await socialAccounts(deps, brand, true), entry.channel)?.id ?? null;
-      if (!accountId) throw new AccessError(`Connect ${channel(entry.channel)?.name} in Boutiqly's social planner first.`, 400);
-    }
-    const posts = buildPlannerPosts({ entry: { ...entry, plannerAccountId: accountId }, piece, media, caption: caption ?? null, userId: viewer.ctx.userId });
+    const accountId = await plannerAccountFor(deps, brand, entry);
+    const posts = buildPlannerPosts({ entry: { ...entry, plannerAccountId: accountId }, piece, media, caption, userId: viewer.ctx.userId });
 
     // Live posting off: show what would go out, send nothing.
     const [fresh] = await deps.db.select({ live: brands.livePosting }).from(brands).where(eq(brands.id, brand.id));
@@ -449,6 +457,7 @@ export async function approveEntry(deps: CalendarDeps, viewer: Viewer, entryId: 
         await deps.db.update(calendarEntries).set({ plannerPostIds: ids }).where(eq(calendarEntries.id, entry.id));
       } catch (err) {
         const message = err instanceof BoutiqlyError ? err.message : "Boutiqly couldn't be reached.";
+        if (err instanceof BoutiqlyError) console.warn(`[approve] Boutiqly said ${err.status} for entry ${entryId}: ${err.detail}`);
         await deps.db
           .update(calendarEntries)
           .set({
@@ -468,6 +477,56 @@ export async function approveEntry(deps: CalendarDeps, viewer: Viewer, entryId: 
       .where(eq(calendarEntries.id, entry.id));
     await audit(deps.db, viewer, "calendar.approve", { entryId, route: entry.route, plannerPosts: ids.length });
     return { entry: await oneView(deps, brand, entryId) };
+  });
+}
+
+// ---- Drafts: proving the connection without posting ----
+
+// Sends the entry to Boutiqly's social planner as a draft. Drafts never
+// publish, so this works whether Live posting is on or off. The entry's own
+// status doesn't change.
+export async function sendDraft(deps: CalendarDeps, viewer: Viewer, entryId: string): Promise<DraftResult> {
+  const brand = requirePermission(viewer, "use_tab");
+  return withEntryLock(deps.pool, entryId, async () => {
+    const entry = await ownEntry(deps, brand, entryId);
+    if (entry.route !== "publish" && entry.route !== "app_ping") {
+      throw new AccessError("This one goes out as a ready-to-post pack, so there's nothing to send to Boutiqly's social planner.", 400);
+    }
+    const { piece, media, caption } = await entryContent(deps, brand, entry);
+    const problems = problemsFor(entry.channel, piece.kind as Kind, media, caption);
+    if (problems.length) throw new AccessError(problems.join(" "), 400);
+    const accountId = await plannerAccountFor(deps, brand, entry);
+    const posts = buildPlannerPosts({ entry: { ...entry, plannerAccountId: accountId }, piece, media, caption, userId: viewer.ctx.userId })
+      .map((p) => ({ ...p, status: "draft" as const }));
+
+    const ids = [...entry.plannerDraftIds];
+    if (posts.length > 0 && ids.length >= posts.length && ids.every(Boolean)) {
+      return { entry: await oneView(deps, brand, entryId), alreadySent: true };
+    }
+    // Ids are saved as they come back, so a retry only sends the missing frames.
+    for (let i = 0; i < posts.length; i++) {
+      if (ids[i]) continue;
+      try {
+        ids[i] = await deps.client(brand).createPost(posts[i]!);
+        await deps.db.update(calendarEntries).set({ plannerDraftIds: ids }).where(eq(calendarEntries.id, entry.id));
+      } catch (err) {
+        const message = err instanceof BoutiqlyError ? err.message : "Boutiqly couldn't be reached.";
+        if (err instanceof BoutiqlyError) {
+          console.warn(`[draft] Boutiqly said ${err.status} for entry ${entryId}: ${err.detail}`);
+        } else {
+          console.warn(`[draft] couldn't reach Boutiqly for entry ${entryId}: ${(err as Error).message}`);
+        }
+        await audit(deps.db, viewer, "calendar.send_draft_failed", { entryId, sent: i, of: posts.length, message });
+        throw new AccessError(
+          posts.length > 1 ? `Frame ${i + 1} of ${posts.length} didn't go through. Boutiqly said: ${message}` : `Boutiqly said: ${message}`,
+          502,
+        );
+      }
+    }
+    const now = (deps.now ?? (() => new Date()))();
+    await deps.db.update(calendarEntries).set({ draftSentAt: now, plannerAccountId: accountId }).where(eq(calendarEntries.id, entry.id));
+    await audit(deps.db, viewer, "calendar.send_draft", { entryId, drafts: ids.length });
+    return { entry: await oneView(deps, brand, entryId), alreadySent: false };
   });
 }
 

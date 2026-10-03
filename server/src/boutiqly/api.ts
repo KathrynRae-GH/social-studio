@@ -9,9 +9,12 @@ export class NotInstalledError extends Error {}
 
 export class BoutiqlyError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  // Boutiqly's raw reply (trimmed), for the server log only. Never holds our token.
+  readonly detail: string;
+  constructor(message: string, status: number, detail = "") {
     super(message);
     this.status = status;
+    this.detail = detail.slice(0, 1000);
   }
 }
 
@@ -123,7 +126,7 @@ export function boutiqlyClient(db: Db, config: Config, locationId: string, compa
       } catch {
         /* not JSON */
       }
-      throw new BoutiqlyError(message, res.status);
+      throw new BoutiqlyError(message, res.status, text);
     }
     return (text ? JSON.parse(text) : {}) as T;
   }
@@ -175,7 +178,7 @@ export function boutiqlyClient(db: Db, config: Config, locationId: string, compa
       );
       const r = data.results;
       const id = r?.post?._id ?? r?.post?.id ?? r?._id ?? r?.id;
-      if (!id) throw new BoutiqlyError("Boutiqly didn't say which post it created", 502);
+      if (!id) throw new BoutiqlyError("Boutiqly didn't say which post it created", 502, JSON.stringify(data));
       return id;
     },
 

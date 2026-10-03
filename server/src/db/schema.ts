@@ -126,6 +126,8 @@ export const calendarEntries = pgTable("calendar_entries", {
   plannerAccountId: text("planner_account_id"),
   plannerPostIds: text("planner_post_ids").array().notNull().default([]),
   dryRun: jsonb("dry_run"),
+  plannerDraftIds: text("planner_draft_ids").array().notNull().default([]),
+  draftSentAt: ts("draft_sent_at"),
   lastError: text("last_error"),
   source: text("source").notNull().default("owner"),
   approvedBy: text("approved_by"),

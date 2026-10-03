@@ -225,6 +225,8 @@ function EntryCard({ entry: e, timezone, onChange, onRemove }: { entry: EntryVie
   const [when, setWhen] = useState({ date: e.date, time: e.time });
   const sent = e.sentFrames > 0 || e.status === "scheduled" || e.status === "posted";
   const canApprove = needsOk(e);
+  const planner = e.route === "publish" || e.route === "app_ping";
+  const canDraft = planner && e.draftsSent < e.frames && e.status !== "scheduled" && e.status !== "posted";
   const byHand = (e.route === "pack" || e.route === "share_from_ig" || e.route === "app_ping") && (e.status === "approved" || e.status === "scheduled") && !e.dryRun;
 
   async function run<T>(fn: () => Promise<T>, after: (r: T) => void) {
@@ -255,6 +257,11 @@ function EntryCard({ entry: e, timezone, onChange, onRemove }: { entry: EntryVie
         {e.routeNote && <span className="small muted">{e.routeNote}</span>}
         {e.caption && <p className="entry-caption">{e.caption}</p>}
         {e.lastError && <p className="error small">{e.lastError}{e.sentFrames > 0 && e.frames > 1 ? ` (${e.sentFrames} of ${e.frames} frames sent; Approve again to send the rest)` : ""}</p>}
+        {e.draftsSent > 0 && e.draftSentAt && (
+          <span className="small muted">
+            Draft in Boutiqly's social planner, sent {friendlyDate(new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date(e.draftSentAt)))}. Drafts never post.
+          </span>
+        )}
         {note && <p className="notice small">{note}</p>}
         <ErrorNote message={error} />
 
@@ -282,6 +289,25 @@ function EntryCard({ entry: e, timezone, onChange, onRemove }: { entry: EntryVie
               }
             >
               {busy ? "Sending…" : e.status === "needs_attention" ? "Try again" : "Approve"}
+            </button>
+          )}
+          {canDraft && (
+            <button
+              className="btn-secondary small"
+              disabled={busy}
+              title="Creates a draft in Boutiqly's social planner. Drafts never post."
+              onClick={() =>
+                run(() => api.sendDraft(e.id), (r) => {
+                  onChange(r.entry);
+                  setNote(
+                    r.alreadySent
+                      ? "This is already in Boutiqly's social planner as a draft."
+                      : `Sent. Open Boutiqly's social planner and look under Drafts to see ${e.frames > 1 ? `the ${e.frames} drafts` : "it"}. Drafts never post.`,
+                  );
+                })
+              }
+            >
+              {e.draftsSent > 0 ? "Send the rest as drafts" : "Send to Boutiqly as a draft"}
             </button>
           )}
           {e.route === "pack" && e.status !== "suggested" && (
