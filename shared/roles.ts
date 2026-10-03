@@ -54,5 +54,6 @@ export interface TeamEntry {
   name: string;
   email: string;
   role: TeamRole | "requested" | "candidate";
+  isAgency?: boolean; // on Boutiqly's agency team (full access everywhere regardless)
   requestedAt?: string;
 }

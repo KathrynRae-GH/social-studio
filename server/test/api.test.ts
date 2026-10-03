@@ -180,15 +180,16 @@ describe("team and access", () => {
 });
 
 describe("setting up a shop from Boutiqly's user list", () => {
-  it("lists the sub-account's users, without agency users or people already on the team", async () => {
+  it("lists the sub-account's users, then Boutiqly's team, without people already on the team", async () => {
     await install();
     const agency = await signInAs(t.app, people.agency);
     const res = await t.app.inject({ url: "/api/team/candidates", headers: agency.headers });
     expect(res.json()).toEqual({
       available: true,
       people: [
-        { userId: "u_new", name: "Nina New", email: "nina@example.com", role: "candidate" },
-        { userId: "u_owner", name: "Olive Owner", email: "olive@example.com", role: "candidate" },
+        { userId: "u_new", name: "Nina New", email: "nina@example.com", role: "candidate", isAgency: false },
+        { userId: "u_owner", name: "Olive Owner", email: "olive@example.com", role: "candidate", isAgency: false },
+        { userId: "u_agency", name: "Katy Agency", email: "katy@example.com", role: "candidate", isAgency: true },
       ],
     });
   });
@@ -204,14 +205,33 @@ describe("setting up a shop from Boutiqly's user list", () => {
     const nina = await signInAs(t.app, { ...people.staff, userId: "u_new", userName: "Nina New", email: "nina@example.com" });
     expect(nina.me.role).toBe("owner");
     const candidates = (await t.app.inject({ url: "/api/team/candidates", headers: agency.headers })).json().people;
-    expect(candidates.map((p: { userId: string }) => p.userId)).toEqual(["u_owner"]);
+    expect(candidates.map((p: { userId: string }) => p.userId)).toEqual(["u_owner", "u_agency"]);
   });
 
-  it("refuses to put an agency user on the list", async () => {
+  it("lets an agency admin be named owner, and lists agency people who've opened the tab", async () => {
     await install();
-    const agency = await signInAs(t.app, people.agency);
-    const res = await t.app.inject({ method: "PUT", url: "/api/team/u_agency", headers: agency.headers, payload: { role: "team" } });
-    expect(res.statusCode).toBe(400);
+    const katy = await signInAs(t.app, people.agency);
+    // Ashley is on the agency team but has no login to this sub-account.
+    await signInAs(t.app, { ...people.agency, userId: "u_ashley", userName: "Ashley Agency", email: "ashley@example.com" });
+    // Someone from a different agency never shows up.
+    await signInAs(t.app, { ...people.agency, userId: "u_stranger", companyId: "co_other", activeLocation: "loc_elsewhere" });
+
+    const candidates = (await t.app.inject({ url: "/api/team/candidates", headers: katy.headers })).json().people;
+    expect(candidates.filter((p: { isAgency: boolean }) => p.isAgency).map((p: { userId: string }) => p.userId)).toEqual([
+      "u_ashley",
+      "u_agency",
+    ]);
+
+    const res = await t.app.inject({ method: "PUT", url: "/api/team/u_ashley", headers: katy.headers, payload: { role: "owner" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().team).toEqual([expect.objectContaining({ userId: "u_ashley", role: "owner", isAgency: true })]);
+
+    // Katy can name herself too. Both keep full access as Boutiqly's team.
+    expect((await t.app.inject({ method: "PUT", url: "/api/team/u_agency", headers: katy.headers, payload: { role: "team" } })).statusCode).toBe(200);
+    const me = (await t.app.inject({ url: "/api/me", headers: katy.headers })).json().me;
+    expect(me.role).toBe("boutiqly_team");
+    expect(me.brand.hasOwner).toBe(true);
+    expect((await t.app.inject({ method: "PUT", url: "/api/team/u_stranger", headers: katy.headers, payload: { role: "owner" } })).statusCode).toBe(404);
   });
 
   it("doesn't show the list to team members or people without access", async () => {

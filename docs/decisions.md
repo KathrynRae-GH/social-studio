@@ -44,4 +44,5 @@ Claude (technical):
 - **Set up this shop checklist** on the Calendar for Boutiqly's team and owners: name the owner (live now), capture the brand and connect social accounts (shown as "Coming soon" until built).
 - **Shop name** is read from Boutiqly the first time the tab opens in a sub-account and saved.
 - Girl Riot Society is Katy's own; fine for the tab to show there during the build.
+- **Agency admins can be named on a shop's Team list (Katy, Oct 3)**, including as its owner, for example for Katy's own brands and white-glove clients. "Add someone" lists the sub-account's users plus Boutiqly's agency people who have opened Social Studio. Their access doesn't change: agency people keep full access to every shop for now.
 
