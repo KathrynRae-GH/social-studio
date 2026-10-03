@@ -20,7 +20,7 @@ services:
     region: ohio
     branch: main
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
+    startCommand: node server/src/index.ts
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
