@@ -358,3 +358,60 @@ describe("assets", () => {
     expect(usableInDesign({ ...base, possibleMinor: false, mime: "video/mp4" }).ok).toBe(false);
   });
 });
+
+describe("uploaded fonts", () => {
+  function fontForm(fileName: string, bytes: Buffer, fields: Record<string, string> = {}, headers = agency.headers) {
+    const boundary = "----font";
+    const parts = Object.entries(fields).map(([k, v]) => Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    const file = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+      bytes,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    return t.app.inject({ method: "POST", url: "/api/fonts", payload: Buffer.concat([...parts, file]), headers: { ...headers, "content-type": `multipart/form-data; boundary=${boundary}` } });
+  }
+  const woff2 = Buffer.concat([Buffer.from("wOF2"), Buffer.alloc(60, 1)]);
+
+  it("checks the file and names the family", async () => {
+    const res = await fontForm("RiotSans-Bold.woff2", woff2, { weight: "700" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().font).toMatchObject({ family: "Riot Sans", weight: 700, italic: false, format: "woff2" });
+    expect((await fontForm("notes.woff2", Buffer.from("hello, not a font at all"))).statusCode).toBe(400);
+    expect((await fontForm("x.woff2", woff2, { family: "<script>" })).statusCode).toBe(400);
+    const other = await signInAs(t.app, people.other);
+    expect((await fontForm("x.woff2", woff2, {}, other.headers)).statusCode).toBe(403);
+  });
+
+  it("keeps each shop's fonts to itself", async () => {
+    const id = (await fontForm("Riot.woff2", woff2, { family: "Riot Sans" })).json().font.id;
+    const file = await t.app.inject({ url: `/api/fonts/${id}/file`, headers: agency.headers });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers["content-type"]).toBe("font/woff2");
+    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
+    expect((await t.app.inject({ url: `/api/fonts/${id}/file`, headers: elsewhere.headers })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: "DELETE", url: `/api/fonts/${id}`, headers: elsewhere.headers })).statusCode).toBe(404);
+    expect((await t.app.inject({ url: "/api/fonts", headers: elsewhere.headers })).json().fonts).toEqual([]);
+  });
+
+  it("renders designs with the uploaded font, and puts the look back to draft if it's removed", async () => {
+    await claudeOn();
+    const id = (await fontForm("Riot.woff2", woff2, { family: "Riot Sans" })).json().font.id;
+    await t.app.inject({ method: "PUT", url: "/api/style", headers: agency.headers, payload: { colors: [{ name: "Ink", hex: "#111111", role: "text" }, { name: "Pink", hex: "#ff3399", role: "accent" }], headingFont: "Riot Sans", bodyFont: "DM Sans" } });
+    const style = (await t.app.inject({ method: "POST", url: "/api/style/approve", headers: agency.headers })).json().style;
+    expect(style.customFonts).toEqual([{ id, family: "Riot Sans", weight: 400, italic: false, format: "woff2" }]);
+
+    script = [useTool("design_piece", { kind: "post", title: "a", design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
+    await askRaw("A post please");
+    const doc = renderedDocs[0]![0]!;
+    expect(doc).toContain(`@font-face { font-family: "Riot Sans"; src: url("https://fonts.render.local/${id}") format("woff2")`);
+    expect(doc).toContain("family=DM+Sans");
+    expect(doc).not.toContain("family=Riot");
+    const job = await t.pool.query("SELECT payload->>'brandId' AS b FROM jobs WHERE kind = 'render'");
+    expect(job.rows[0].b).toBeTruthy();
+    expect((calls[0]!.system as { text: string }[])[0]!.text).toContain("Uploaded fonts (already loaded, use by family name): Riot Sans (400)");
+
+    await t.app.inject({ method: "DELETE", url: `/api/fonts/${id}`, headers: agency.headers });
+    const after = (await t.app.inject({ url: "/api/style", headers: agency.headers })).json().style;
+    expect(after).toMatchObject({ status: "draft", customFonts: [] });
+  });
+});

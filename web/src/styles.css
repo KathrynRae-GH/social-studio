@@ -266,3 +266,7 @@ h3 { font-size: 16px; }
   .entry-thumb { width: 56px; height: 70px; }
 }
 .ask-panel select { width: 100%; min-width: 0; }
+.font-list { list-style: none; padding: 0; margin: 4px 0 10px; }
+.font-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.font-list li > span strong { font-family: inherit; font-size: 18px; }
+.font-upload { margin-bottom: 8px; }

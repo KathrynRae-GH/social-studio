@@ -2,7 +2,9 @@
 import type { Me, TeamEntry } from "../../shared/roles.ts";
 import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
-import type { StyleColor, StyleSetView } from "../../shared/design.ts";
+import type { CustomFont, StyleColor, StyleSetView } from "../../shared/design.ts";
+
+export type UploadedFont = CustomFont & { fileName: string; sizeBytes: number };
 
 interface MessageSource {
   postMessage(message: unknown, targetOrigin: string): void;
@@ -130,6 +132,16 @@ export const api = {
   style: () => call<{ style: StyleSetView }>("/api/style"),
   saveStyle: (input: Partial<{ colors: StyleColor[]; headingFont: string; bodyFont: string; vibe: string; dosDonts: string; logoAssetId: string | null }>) =>
     call<{ style: StyleSetView }>("/api/style", { method: "PUT", body: JSON.stringify(input) }),
+  fonts: () => call<{ fonts: UploadedFont[] }>("/api/fonts"),
+  uploadFont: (file: File, fields: { family: string; weight: number; italic: boolean }) => {
+    const form = new FormData();
+    form.append("family", fields.family);
+    form.append("weight", String(fields.weight));
+    form.append("italic", String(fields.italic));
+    form.append("file", file);
+    return call<{ font: UploadedFont }>("/api/fonts", { method: "POST", body: form });
+  },
+  deleteFont: (id: string) => call<{ ok: true }>(`/api/fonts/${id}`, { method: "DELETE" }),
   approveStyle: () => call<{ style: StyleSetView }>("/api/style/approve", { method: "POST", body: "{}" }),
   assets: () => call<{ assets: AssetDetail[] }>("/api/assets"),
   setAssetRules: (id: string, input: Partial<{ peopleRule: AssetDetail["peopleRule"]; flagsCleared: boolean }>) =>
@@ -197,4 +209,27 @@ export async function askClaude(input: { conversationId: string | null; text: st
       if (line) onEvent(JSON.parse(line) as AskEvent);
     }
   }
+}
+
+// An uploaded font as a data: address, for the Look sample (which can't send
+// the sign-in pass itself).
+const fontDataCache = new Map<string, Promise<string>>();
+export function fontDataUrl(id: string): Promise<string> {
+  if (!fontDataCache.has(id)) {
+    fontDataCache.set(
+      id,
+      (async () => {
+        const res = await fetch(`/api/fonts/${id}/file`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+        if (!res.ok) throw new ApiError("The font couldn't be loaded.", res.status);
+        const blob = await res.blob();
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+      })(),
+    );
+  }
+  return fontDataCache.get(id)!;
 }

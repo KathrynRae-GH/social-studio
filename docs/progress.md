@@ -2,6 +2,12 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 3, 2026 (late night): uploaded brand fonts
+
+- Katy tested Milestone 3 and found her brand fonts didn't show (they aren't Google Fonts).
+- Done: Brand → Look → "Upload a font" (.woff2, .woff, .ttf, .otf), with a name, weight and italic for each file. Uploaded fonts appear in the font pickers, the Look sample, Claude's instructions and the rendered posts. 113 automated tests (99 server, 2 web, 12 worker), and a click-through where Claude's carousel rendered in an uploaded font.
+- Next: Katy uploads Girl Riot's fonts (each weight as its own file, same name), picks them as heading/body, re-approves the look, and asks Claude for a post.
+
 ## Oct 3, 2026 (night): Milestone 3 built (Claude designs posts)
 
 - Done:

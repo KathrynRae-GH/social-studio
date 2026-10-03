@@ -59,7 +59,7 @@ Use post/carousel → portrait, story/story_set → story, pin → pin, google_u
 The engine already sets: box-sizing border-box; html/body at the frame size with overflow hidden; body background var(--brand-background), color var(--brand-text), font var(--font-body); h1–h4 and .heading use var(--font-heading); class "photo" = width/height 100% object-fit cover.
 Colors and fonts come only from these CSS variables: ${vars}. Don't write raw hex colors except white/black for contrast.
 Photos: <img class="photo" src="asset:ASSET_ID"> or CSS url("asset:ASSET_ID"). The logo (only if the shop has an approved logo): src="asset:logo".
-No scripts, no external links, no web fonts beyond the two in the style set. Text must be large enough to read on a phone (body text 34px+ on a 1080px-wide frame) with strong contrast.
+No scripts, no external links, and no fonts beyond the two in the style set (already loaded for you). Text must be large enough to read on a phone (body text 34px+ on a 1080px-wide frame) with strong contrast.
 Draw graphics in code (SVG shapes, patterns, lines). For a carousel, keep a consistent system across slides and make slide 1 a strong hook.
 After design_piece returns, look at the rendered preview images to check them, and fix anything off (overflowing text, low contrast, cramped layout) with another design_piece call on the same piece_id.`;
 }
@@ -69,7 +69,7 @@ function styleText(style: StyleSetView, shopName: string): string {
 Name: ${shopName || "(not set)"}
 Look: ${style.status === "approved" ? "the shop's approved style set" : "the basic Boutiqly look (the shop's own look isn't approved yet), with no logo"}
 Colors: ${style.colors.map((c) => `${c.name} ${c.hex} (${c.role})`).join("; ")}
-Heading font: ${style.headingFont}. Body font: ${style.bodyFont}.
+Heading font: ${style.headingFont}. Body font: ${style.bodyFont}.${style.customFonts.length ? `\nUploaded fonts (already loaded, use by family name): ${[...new Set(style.customFonts.map((f) => `${f.family} (${style.customFonts.filter((x) => x.family === f.family).map((x) => `${x.weight}${x.italic ? " italic" : ""}`).join(", ")})`))].join("; ")}.` : ""}
 Logo: ${style.logoUrl ? "yes (asset:logo)" : "none, so never include a logo"}
 Vibe: ${style.vibe || "(no notes yet)"}
 Dos and don'ts: ${style.dosDonts || "(none yet)"}`;

@@ -98,3 +98,56 @@ def test_blur_hides_the_marked_box_only():
 
     assert contrast((40, 40, 120)) < 40  # stripes gone inside the box
     assert contrast((300, 300, 380)) > 200  # untouched outside it
+
+
+FONT_FILE = next((p for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"] if os.path.exists(p)), None)
+FONT_ID = "11111111-2222-3333-4444-555555555555"
+FONT_DOC = """<!doctype html><html><head><style>
+@font-face { font-family: "Shop Upload"; src: url("https://fonts.render.local/%s") format("truetype"); font-display: block; }
+html,body{margin:0;width:600px;height:200px;background:#fff}
+span{font-family:"Shop Upload", serif;font-size:60px;color:#000}
+</style></head><body><span id="t">iiiiiiiiii</span></body></html>""" % FONT_ID
+
+
+def ink_width(png: bytes) -> int:
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(png)).convert("L")
+    xs = [x for x in range(img.width) for y in range(0, img.height, 4) if img.getpixel((x, y)) < 128]
+    return (max(xs) - min(xs)) if xs else 0
+
+
+@needs_chromium
+@pytest.mark.skipif(FONT_FILE is None, reason="No test font file on this machine")
+def test_uploaded_fonts_come_from_the_shops_own_store():
+    data = open(FONT_FILE, "rb").read()
+    asked = []
+
+    def load(font_id):
+        asked.append(font_id)
+        return ("truetype", data) if font_id == FONT_ID else None
+
+    with_font, blocked = render_frames([FONT_DOC], 600, 200, [], load)
+    without_font, blocked_without = render_frames([FONT_DOC], 600, 200, [], lambda _id: None)
+    assert asked == [FONT_ID] and blocked == []
+    assert f"https://fonts.render.local/{FONT_ID}" in blocked_without
+    # A monospace "i" is far wider than a serif "i": the uploaded font was used.
+    assert ink_width(with_font[0]) > ink_width(without_font[0]) + 50
+
+
+def test_font_loader_only_reads_the_jobs_own_shop():
+    class FakeConn:
+        def __init__(self):
+            self.args = None
+
+        def execute(self, _sql, args):
+            self.args = args
+            return type("C", (), {"fetchone": lambda _self: None})()
+
+    conn = FakeConn()
+    from worker.render import db_font_loader
+
+    assert db_font_loader(conn, "brand-a")(FONT_ID) is None
+    assert conn.args == (FONT_ID, "brand-a")
+    assert db_font_loader(conn, None)(FONT_ID) is None  # no shop on the job: nothing loads
+    assert db_font_loader(conn, "brand-a")("../etc/passwd") is None
