@@ -29,10 +29,13 @@ export const SENSITIVE_KINDS = [
 ] as const;
 
 // Can Claude put this file in a design? Each "no" says why, in plain words.
-export function usableInDesign(a: Pick<Asset, "mime" | "taggedAt" | "peopleRule" | "possibleMinor" | "sensitive" | "flagsCleared" | "madeBy">): {
+export function usableInDesign(
+  a: Pick<Asset, "mime" | "taggedAt" | "peopleRule" | "possibleMinor" | "sensitive" | "flagsCleared" | "madeBy"> & Partial<Pick<Asset, "purpose">>,
+): {
   ok: boolean;
   reason: string | null;
 } {
+  if (a.purpose === "inspiration") return { ok: false, reason: "Inspiration only: Claude studies it but never puts it in a post." };
   if (!a.mime.startsWith("image/")) return { ok: false, reason: "Only photos and graphics go into designs for now." };
   if (a.madeBy === "render") return { ok: false, reason: "This is a finished design, not a source photo." };
   if (!a.taggedAt) return { ok: false, reason: "Claude hasn't looked at this file yet." };
@@ -58,6 +61,7 @@ export function assetDetail(a: Asset): AssetDetail {
     peopleRule: a.peopleRule,
     tagged: !!a.taggedAt,
     madeBy: a.madeBy,
+    purpose: a.purpose,
     sourceAssetId: a.sourceAssetId,
     usable: usableInDesign(a),
   };
@@ -283,4 +287,30 @@ export async function finishBlur(deps: BlurDeps, viewer: Viewer, assetId: string
   });
   if (!done) return { status: "pending" };
   return { status: "done", asset: assetDetail(done) };
+}
+
+// ---- The inspiration board ----
+
+export const MAX_INSPIRATION = 10;
+
+export async function inspirationFor(db: Db, brand: Brand): Promise<Asset[]> {
+  return db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.brandId, brand.id), eq(assets.purpose, "inspiration")))
+    .orderBy(desc(assets.createdAt))
+    .limit(MAX_INSPIRATION);
+}
+
+export async function inspirationCount(db: Db, brand: Brand): Promise<number> {
+  return (await db.select({ id: assets.id }).from(assets).where(and(eq(assets.brandId, brand.id), eq(assets.purpose, "inspiration")))).length;
+}
+
+// Takes a post off the board. The file stays in Boutiqly media storage.
+export async function removeInspiration(db: Db, viewer: Viewer, assetId: string): Promise<void> {
+  const brand = requirePermission(viewer, "manage_brand");
+  const a = await ownAsset(db, brand, assetId);
+  if (a.purpose !== "inspiration") throw new AccessError("That file isn't on the inspiration board.", 400);
+  await db.delete(assets).where(eq(assets.id, a.id));
+  await audit(db, viewer, "inspiration.remove", { assetId });
 }

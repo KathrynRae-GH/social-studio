@@ -22,14 +22,14 @@ function assetView(a: typeof assets.$inferSelect): AssetView {
 export async function addAsset(
   db: Db,
   viewer: Viewer,
-  file: { boutiqlyFileId: string | null; url: string; mime: string; name: string; sizeBytes: number },
+  file: { boutiqlyFileId: string | null; url: string; mime: string; name: string; sizeBytes: number; purpose?: "content" | "inspiration" },
 ): Promise<AssetView> {
-  const brand = requirePermission(viewer, "use_tab");
+  const brand = requirePermission(viewer, file.purpose === "inspiration" ? "manage_brand" : "use_tab");
   const [row] = await db
     .insert(assets)
     .values({ brandId: brand.id, ...file, uploadedBy: viewer.ctx.userId })
     .returning();
-  await audit(db, viewer, "asset.upload", { assetId: row!.id, name: file.name });
+  await audit(db, viewer, file.purpose === "inspiration" ? "inspiration.add" : "asset.upload", { assetId: row!.id, name: file.name });
   return assetView(row!);
 }
 

@@ -98,6 +98,7 @@ export const assets = pgTable("assets", {
   taggedAt: ts("tagged_at"),
   sourceAssetId: uuid("source_asset_id"),
   madeBy: text("made_by", { enum: ["upload", "render", "blur"] }).notNull().default("upload"),
+  purpose: text("purpose", { enum: ["content", "inspiration"] }).notNull().default("content"),
 });
 
 export const pieces = pgTable("pieces", {

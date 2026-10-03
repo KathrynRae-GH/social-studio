@@ -42,6 +42,7 @@ export function LookPanel({ me }: { me: Me }) {
   const [saved, setSaved] = useState<StyleSetView | null>(null);
   const [draft, setDraft] = useState<StyleSetView>(FALLBACK_STYLE);
   const [images, setImages] = useState<AssetDetail[]>([]);
+  const [board, setBoard] = useState<AssetDetail[]>([]);
   const [fonts, setFonts] = useState<UploadedFont[]>([]);
   const [fontUrls, setFontUrls] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<{ file: File; family: string; weight: number; italic: boolean } | null>(null);
@@ -51,7 +52,10 @@ export function LookPanel({ me }: { me: Me }) {
 
   useEffect(() => {
     api.style().then((r) => { setSaved(r.style); setDraft(r.style); }, (e: Error) => setError(e.message));
-    if (canEdit) api.assets().then((r) => setImages(r.assets.filter((a) => a.mime.startsWith("image/") && a.madeBy !== "render")), () => {});
+    api.assets().then((r) => {
+      setImages(r.assets.filter((a) => a.mime.startsWith("image/") && a.madeBy !== "render" && a.purpose !== "inspiration"));
+      setBoard(r.assets.filter((a) => a.purpose === "inspiration"));
+    }, () => {});
     api.fonts().then((r) => setFonts(r.fonts), () => {});
   }, [canEdit]);
 
@@ -81,6 +85,31 @@ export function LookPanel({ me }: { me: Me }) {
       setError((e as Error).message);
     } finally {
       setBusy("");
+    }
+  }
+
+  async function addInspiration(files: FileList | null) {
+    if (!files?.length) return;
+    setError("");
+    setBusy(`Adding ${files.length > 1 ? `${files.length} posts` : "the post"} to the inspiration board…`);
+    try {
+      for (const f of Array.from(files)) await api.upload(f, "inspiration");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      const { assets } = await api.assets();
+      setBoard(assets.filter((a) => a.purpose === "inspiration"));
+      setBusy("");
+    }
+  }
+
+  async function removeInspiration(id: string) {
+    setError("");
+    try {
+      await api.removeInspiration(id);
+      setBoard((b) => b.filter((a) => a.id !== id));
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -144,7 +173,7 @@ export function LookPanel({ me }: { me: Me }) {
     try {
       const { asset } = await api.upload(file);
       const { assets } = await api.assets();
-      setImages(assets.filter((a) => a.mime.startsWith("image/") && a.madeBy !== "render"));
+      setImages(assets.filter((a) => a.mime.startsWith("image/") && a.madeBy !== "render" && a.purpose !== "inspiration"));
       setDraft((d) => ({ ...d, logoAssetId: asset.id, logoUrl: asset.url }));
     } catch (e) {
       setError((e as Error).message);
@@ -281,6 +310,26 @@ export function LookPanel({ me }: { me: Me }) {
             <p className="small">{draft.logoUrl ? "Set" : "None"}</p>
           )}
           <p className="muted small">A PNG with a see-through background works best.</p>
+
+          <h3>Inspiration board</h3>
+          <p className="muted small">
+            Add 3 to 10 posts you love: your own best posts, or other brands whose style you'd like to borrow from (screenshots are fine). Claude studies them
+            before every design. It borrows their energy and layouts, never copies them, and never puts them in your posts.
+          </p>
+          <div className="board">
+            {board.map((a) => (
+              <figure key={a.id} className="board-item">
+                <img src={a.url} alt="" loading="lazy" />
+                {canEdit && <button className="btn-link small" onClick={() => void removeInspiration(a.id)}>Remove</button>}
+              </figure>
+            ))}
+            {canEdit && board.length < 10 && (
+              <label className="board-add">
+                <input type="file" accept="image/*" multiple hidden onChange={(e) => { void addInspiration(e.target.files); e.target.value = ""; }} />
+                <span>+ Add posts you love</span>
+              </label>
+            )}
+          </div>
 
           <label className="field">
             <span>The vibe (how posts should feel)</span>

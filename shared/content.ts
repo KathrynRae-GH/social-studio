@@ -21,6 +21,7 @@ export interface AssetDetail extends AssetView {
   peopleRule: "ok" | "no_faces" | "dont_use";
   tagged: boolean;
   madeBy: "upload" | "render" | "blur";
+  purpose: "content" | "inspiration";
   sourceAssetId: string | null;
   usable: { ok: boolean; reason: string | null }; // can Claude design with it
 }

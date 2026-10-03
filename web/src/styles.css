@@ -270,3 +270,8 @@ h3 { font-size: 16px; }
 .font-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
 .font-list li > span strong { font-family: inherit; font-size: 18px; }
 .font-upload { margin-bottom: 8px; }
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 6px 0 14px; }
+.board-item { margin: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.board-item img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); background: var(--border); }
+.board-add { display: flex; align-items: center; justify-content: center; text-align: center; aspect-ratio: 4 / 5; border: 2px dashed var(--border); border-radius: 8px; padding: 8px; font-size: 13px; font-weight: 600; color: var(--green); cursor: pointer; }
+.board-add:hover { border-color: var(--green); }

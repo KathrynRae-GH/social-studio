@@ -103,6 +103,7 @@ export function AssetsScreen() {
   }
 
   const shown = (list ?? []).filter((a) => {
+    if (a.purpose === "inspiration") return false; // those live on Brand → Look
     if (filter === "designs") return a.madeBy === "render";
     if (a.madeBy === "render") return false;
     if (filter === "usable") return a.usable.ok;

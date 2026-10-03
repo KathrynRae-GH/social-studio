@@ -8,7 +8,7 @@ import { AccessError, audit, requirePermission, type Brand, type Viewer } from "
 import { claudeSettings, type ClaudeDeps } from "../claude/client.ts";
 import { ask, decideProposal, getConversation, listConversations, type AskDeps } from "../claude/ask.ts";
 import { approveStyleSet, getStyleSet, saveStyleSet } from "../styles.ts";
-import { finishBlur, listAssetDetails, startBlur, tagAsset, updateAssetRules } from "../assets.ts";
+import { finishBlur, listAssetDetails, removeInspiration, startBlur, tagAsset, updateAssetRules } from "../assets.ts";
 import { finishRender } from "../render.ts";
 import multipart from "@fastify/multipart";
 import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../fonts.ts";
@@ -94,6 +94,10 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
   app.patch<{ Params: { id: string }; Body: Body }>("/api/assets/:id", async (req) => ({
     asset: await updateAssetRules(db, await viewerFrom(req), req.params.id, req.body ?? {}),
   }));
+  app.delete<{ Params: { id: string } }>("/api/inspiration/:id", async (req) => {
+    await removeInspiration(db, await viewerFrom(req), req.params.id);
+    return { ok: true };
+  });
   app.post<{ Params: { id: string } }>("/api/assets/:id/tag", async (req) => ({
     asset: await tagAsset({ ...deps.ask, fetchImpl: deps.fetchImpl }, await viewerFrom(req), req.params.id),
   }));
