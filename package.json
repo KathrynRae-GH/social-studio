@@ -1,0 +1,15 @@
+{
+  "name": "social-studio",
+  "private": true,
+  "description": "Social Studio: a social media studio tab inside every Boutiqly sub-account.",
+  "workspaces": ["server", "web"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "build": "npm run build -w web",
+    "start": "npm start -w server",
+    "dev": "npm run dev -w server",
+    "migrate": "npm run migrate -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "test": "npm test -w server && npm test -w web"
+  }
+}
