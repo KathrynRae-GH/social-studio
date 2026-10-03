@@ -74,3 +74,21 @@ Katy:
 Claude (technical):
 - Draft ids are stored apart from real post ids (`planner_draft_ids`), one per Story frame, saved as they come back so a retry only sends the missing frames. Sending a draft never changes the entry's status or blocks Approve.
 - When Boutiqly refuses a post, the server log keeps its reply (trimmed, never our token), so a wrong field can be fixed from Render's logs.
+
+## Oct 3, 2026: Milestone 3 (Katy's answers, then Claude's technical calls)
+
+Katy:
+- Start Milestone 3 now; real-post tests can happen alongside.
+- **Spend guard until wallet billing (Milestone 6):** each shop has a "Claude on" switch, off by default, that only Boutiqly's team can flip, plus a monthly limit of **$20 of Claude cost** by default (changeable per shop). Every call is metered from day one.
+- **A simple Look editor now** (logo, colors, two Google fonts, vibe and dos/don'ts) so test shops get their own look in Milestone 3; brand capture (Milestone 5) will fill the same editor.
+
+Claude (technical):
+- **One door to Claude** (`server/src/claude/client.ts`): checks the switch and the limit before each call, uses `CLAUDE_MODEL` (default `claude-opus-5-5`) with adaptive thinking, and writes a `usage_ledger` row per call with input, output, cache-read and cache-write tokens, web searches, cost in cents and credits (2x). Prices live in `server/src/config.ts`; a model missing from the table is priced at the highest rate we know. The month for the limit is the calendar month in UTC.
+- **Refusal fallback on:** if a safety check declines a request, Anthropic re-runs it on a fallback model in the same call (`fallbacks: "default"`); that run is metered at its own model's rates.
+- **Prompt caching:** the system prompt (rules, design guide, channels, the shop's look) and the conversation so far are cached, so each new message mostly re-reads from cache.
+- **Ask Claude runs in the web service** with tools: search the library, read the calendar, list files, look at an image, design a piece, propose a change, and web search (up to 5 per reply). Replies stream to the tab. Conversations are saved whole and only ever appended to, and each person sees only their own chats.
+- **What Claude can't do, in code (not only in its instructions):** use a file that's untagged, marked Don't use, possibly showing someone under 18, or flagged with private details (until the owner clears it or makes a blurred copy); use another shop's files or look; use an unapproved look (it gets the basic Boutiqly look instead); change a piece that's already approved or scheduled; mark a caption Final; change the calendar (it proposes; a person taps Apply).
+- **Designs are HTML/CSS/SVG per frame** on one shared engine (`shared/design.ts`). The shop's look arrives only as CSS variables, fonts and the logo. Scripts and outside links are stripped.
+- **Rendering happens in the worker** with headless Chromium. Page scripts are blocked, every request is refused except the shop's own media addresses and Google Fonts (which the worker fetches itself, with a time limit), and each wait has a time limit. Rendered PNGs go into the shop's Boutiqly media storage and onto the piece.
+- **The worker now runs as a Docker image** (Microsoft's Playwright image, `worker/Dockerfile`) so Chromium's system libraries are there. Same service, plan and price; `render.yaml` switches its runtime in place. It only takes job kinds it can handle.
+- **Assets:** Claude tags each photo on upload while Claude is on (description, tags, people, possible minor, private details with boxes). A blurred copy is made by the worker (pixelate and blur) as a new file; the original stays as it was.

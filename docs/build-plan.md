@@ -28,7 +28,8 @@ Milestones in order. Each ends with something Katy can open and try. Dates are t
 ## M3. Posts, Stories, Assets and Ask Claude (Oct 26 – Nov 20)
 
 - Worker and jobs table; HTML/CSS/SVG rendering through headless Chromium at every channel's size; carousels and Story sets.
-- Style sets as data on the unbranded engine, each built from the shop's approved brand board (no port of the Make Space prototype's engine or brand docs; decided Oct 3); the default Boutiqly fallback look (palette and type only, no logo) until a board is approved.
+- Style sets as data on the unbranded engine (no port of the Make Space prototype's engine or brand docs; decided Oct 3), edited in a simple Look editor on the Brand screen and approved by the owner; the default Boutiqly fallback look (palette and type only, no logo) until a look is approved. Brand capture (M5) fills the same editor.
+- Spend guard until M6: Claude on/off per shop (Boutiqly team) and a monthly limit ($20 default).
 - Assets: upload and pick from media storage, Claude tagging, people rules, sensitive-details flags with crop/blur.
 - Ask Claude on Opus 5.5: tools for the library, calendar, design and render, web search, images; one-tap apply.
 - Usage ledger: every Claude call metered per job, user and sub-account.

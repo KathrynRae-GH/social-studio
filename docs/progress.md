@@ -2,6 +2,20 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 3, 2026 (night): Milestone 3 built (Claude designs posts)
+
+- Done:
+  - Katy's **draft test in Girl Riot Society worked**: upload to Boutiqly media storage and a draft in the social planner. Milestone 2's plumbing is real.
+  - **Claude switch and monthly limit** on the Brand screen (Boutiqly team only; off by default; $20 limit). Every Claude call is metered: tokens, web searches, cost and credits, per shop, person and purpose. Claude pauses at the limit with a plain message.
+  - **Look editor** on the Brand screen: colors with their use, two Google fonts, logo, vibe, dos and don'ts, and a live sample tile. The owner approves it; until then Claude uses the basic Boutiqly look with no logo.
+  - **Assets screen**: upload, filters (Claude can use, Needs a look, Not tagged, Finished designs), Claude's description and tags, people rule (use freely, no faces, don't use), flagged private details shown as boxes, "make a blurred copy", and clearing flags.
+  - **Ask Claude panel**: a real chat that streams. Claude reads the library, calendar and files, looks at images, searches the web, designs and renders posts, carousels and Stories in the shop's look (they land in the Library as Suggested with draft captions), and proposes calendar or caption changes the owner applies with one tap. Shows what each reply cost.
+  - **Rendering**: the worker turns designs into exact-size PNGs with headless Chromium, locked down (no scripts, no outside requests), and saves them in the shop's media storage. The worker moves to a Docker image to have Chromium.
+  - 108 automated tests (96 server, 2 web, 10 worker). The whole flow was clicked through in a browser with the real renderer and a scripted stand-in for Claude. The real Claude API was **not** called from here (the key lives only in Render).
+- Next: merge, then Katy checks the worker redeployed as Docker and the health page, turns Claude on for Girl Riot, sets and approves its look, uploads a few photos, and asks for a carousel. Then: change it in chat, Apply the calendar proposal, send it as a draft.
+- Waiting on Katy: the Girl Riot Claude test; the test Instagram for real posts; the two Milestone 1 checks; the live scope doc owner rule.
+- Risks: first real Claude calls happen in Katy's test (prompts and caching will need tuning); the worker's switch to Docker happens on this deploy (watch the Render dashboard); Ask Claude waits for renders inside the reply (up to 2 minutes per design).
+
 ## Oct 3, 2026 (evening): "Send to Boutiqly as a draft"
 
 - Done:
