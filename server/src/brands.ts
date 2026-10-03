@@ -6,6 +6,7 @@ import type { Db } from "./db/pool.ts";
 import { accessRequests, auditLog, brands, teamMembers, users } from "./db/schema.ts";
 import type { UserContext } from "./auth/userContext.ts";
 import type { BoutiqlyUser } from "./boutiqly/api.ts";
+import { DEFAULT_TIME_ZONE, isValidTimeZone } from "../../shared/time.ts";
 import { ROLE_LABELS, can, resolveRole, type Me, type Permission, type Role, type TeamEntry, type TeamRole } from "../../shared/roles.ts";
 
 export type Brand = typeof brands.$inferSelect;
@@ -90,6 +91,8 @@ export async function describeViewer(db: Db, viewer: Viewer): Promise<Me> {
           name: viewer.brand.name,
           locationId: viewer.brand.locationId,
           hasOwner: (await ownerCount(db, viewer.brand.id)) > 0,
+          timezone: viewer.brand.timezone || DEFAULT_TIME_ZONE,
+          livePosting: viewer.brand.livePosting,
         }
       : null,
     permissions,
@@ -253,11 +256,18 @@ export async function setTeamRole(
   await audit(db, viewer, "team.set_role", { userId: targetUserId, name: target.name, role });
 }
 
-// Saves the shop's name from Boutiqly the first time we learn it.
-export async function saveBrandName(db: Db, brand: Brand, name: string): Promise<void> {
-  if (brand.name === name) return;
-  await db.update(brands).set({ name }).where(eq(brands.id, brand.id));
+// Saves the shop's name and time zone from Boutiqly the first time we learn them.
+export async function saveBrandDetails(
+  db: Db,
+  brand: Brand,
+  details: { name: string | null; timezone: string | null },
+): Promise<void> {
+  const name = details.name ?? brand.name;
+  const timezone = details.timezone && isValidTimeZone(details.timezone) ? details.timezone : brand.timezone;
+  if (name === brand.name && timezone === brand.timezone) return;
+  await db.update(brands).set({ name, timezone }).where(eq(brands.id, brand.id));
   brand.name = name;
+  brand.timezone = timezone;
 }
 
 export async function removeFromTeam(db: Db, viewer: Viewer, targetUserId: string): Promise<void> {

@@ -44,6 +44,16 @@ From the platform's official marketplace app template (its GitHub repo; the deve
 - **Time zone:** the sub-account's time zone (Make Space: Central) decides what "9 am" means. Store times in that zone; send UTC.
 - **Planner extras** that exist but aren't part of v1: bulk CSV/XLSX upload (up to 90 posts), evergreen queues, recurring posts, RSS posts, its own approval flow, a statistics tab per channel.
 
+## Social planner API, as built (Oct 3, 2026)
+
+Read from the operation descriptions in Boutiqly's API (no calls made); confirm each on the first live test in Test Boutique.
+
+- Connected accounts: `GET /social-media-posting/{locationId}/accounts` → `results.accounts[]` with `id`, `platform`, `name`, `isExpired`.
+- Create: `POST /social-media-posting/{locationId}/posts` with `accountIds`, `summary`, `media[{url, type, altText}]`, `status: "scheduled"`, `scheduleDate` (UTC), `type` post|story|reel, `userId` (required). Per channel: `instagramPostDetails{type, publishViaPushNotification, publisherNote}` (this is the app ping), `youtubePostDetails{type:"short", title}`, `gmbPostDetails{gmbEventType:"STANDARD"}`, `pinterestPostDetails{boardIds}` (needed for pins), `tiktokPostDetails`.
+- Instagram and Facebook Stories take no caption; Instagram needs media on every post; Reels take exactly one video; Instagram allows at most 30 hashtags.
+- Status: `GET /social-media-posting/{locationId}/posts/{id}` → `published`, `failed`, `notification_sent` (app ping went out), `deleted`…
+- Media: `POST /medias/folder` (`altId`, `altType: "location"`, `name`); upload is multipart `POST /medias/upload-file` (`file`, `name`, `hosted=false`, `parentId`). **Upload field names are from memory: check on the first real upload.**
+
 ## Media storage
 
 - There's an upload endpoint for Boutiqly media storage, so the app pushes rendered files itself. (Katy drags packs in by hand today only because the connector Claude used lacked that endpoint.)

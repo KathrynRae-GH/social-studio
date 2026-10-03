@@ -1,5 +1,6 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { Me, TeamEntry } from "../../shared/roles.ts";
+import type { ApproveResult, AccountView, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 
 interface MessageSource {
   postMessage(message: unknown, targetOrigin: string): void;
@@ -57,7 +58,7 @@ async function call<T>(path: string, init: RequestInit = {}, retry = true): Prom
   const res = await fetch(path, {
     ...init,
     headers: {
-      ...(init.body ? { "content-type": "application/json" } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
@@ -90,4 +91,56 @@ export const api = {
     call<{ team: TeamEntry[] }>(`/api/team/${encodeURIComponent(userId)}`, { method: "PUT", body: JSON.stringify({ role }) }),
   remove: (userId: string) =>
     call<{ team: TeamEntry[] }>(`/api/team/${encodeURIComponent(userId)}`, { method: "DELETE" }),
+
+  // Library
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<{ asset: AssetView }>("/api/assets", { method: "POST", body: form });
+  },
+  pieces: () => call<{ pieces: PieceView[] }>("/api/pieces"),
+  createPiece: (input: Partial<{ kind: string; title: string; link: string; assetIds: string[] }>) =>
+    call<{ piece: PieceView }>("/api/pieces", { method: "POST", body: JSON.stringify(input) }),
+  updatePiece: (id: string, input: Partial<{ kind: string; title: string; link: string; assetIds: string[]; archived: boolean }>) =>
+    call<{ piece: PieceView }>(`/api/pieces/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  setCaption: (id: string, channel: string, input: { text: string; altText: string; status: "draft" | "final" }) =>
+    call<{ piece: PieceView }>(`/api/pieces/${id}/captions/${channel}`, { method: "PUT", body: JSON.stringify(input) }),
+
+  // Calendar
+  calendar: (from?: string, to?: string) =>
+    call<CalendarData>(`/api/calendar${from && to ? `?from=${from}&to=${to}` : ""}`),
+  schedule: (pieceId: string, channels: string[], date: string, time: string) =>
+    call<{ entries: EntryView[] }>("/api/calendar", { method: "POST", body: JSON.stringify({ pieceId, channels, date, time }) }),
+  move: (id: string, date: string, time: string) =>
+    call<{ entry: EntryView }>(`/api/calendar/${id}`, { method: "PATCH", body: JSON.stringify({ date, time }) }),
+  unschedule: (id: string) => call<{ ok: true }>(`/api/calendar/${id}`, { method: "DELETE" }),
+  approve: (id: string) => call<ApproveResult>(`/api/calendar/${id}/approve`, { method: "POST", body: "{}" }),
+  markPosted: (id: string) => call<{ entry: EntryView }>(`/api/calendar/${id}/posted`, { method: "POST", body: "{}" }),
+  accounts: () => call<{ accounts: AccountView[] | null }>("/api/accounts"),
+  setLivePosting: (on: boolean) =>
+    call<{ livePosting: boolean }>("/api/settings/live-posting", { method: "PUT", body: JSON.stringify({ on }) }),
+
+  // Ideas
+  ideas: () => call<{ ideas: IdeaView[] }>("/api/ideas"),
+  addIdea: (input: { title: string; pitch: string }) =>
+    call<{ idea: IdeaView }>("/api/ideas", { method: "POST", body: JSON.stringify(input) }),
+  updateIdea: (id: string, input: Partial<{ status: IdeaView["status"]; title: string; pitch: string }>) =>
+    call<{ idea: IdeaView }>(`/api/ideas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  deleteIdea: (id: string) => call<{ ok: true }>(`/api/ideas/${id}`, { method: "DELETE" }),
 };
+
+// Packs come back as a zip; fetch it with the login pass and hand it to the
+// browser as a download.
+export async function downloadPack(entryId: string, filename: string): Promise<void> {
+  const res = await fetch(`/api/calendar/${entryId}/pack`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? "The pack couldn't be made.", res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

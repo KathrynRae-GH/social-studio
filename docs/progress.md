@@ -2,6 +2,19 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 3, 2026 (later): Milestone 2 built
+
+- Done (all in one go, merged by Claude once checks passed, as Katy asked):
+  - **Library**: upload photos and videos into the shop's Boutiqly media storage, pick the type (post, carousel, Story, Story set, Reel, text post, Short, pin, Google update), write captions per channel with character counts, Final/Draft and alt text, add to the calendar for chosen channels at a local time.
+  - **Calendar**: This week (rolling 7 days, "Needs your OK" first), List (six weeks), Month, Instagram grid. Approve (orange) sends to Boutiqly's social planner, makes app pings (one per Story frame, a minute apart) or readies a pack; Download pack, Mark posted, Move, Remove. Status syncs back; reconnect notices for expired accounts.
+  - **Live posting switch** on the Brand screen (Boutiqly team only, off by default): while off, Approve shows what would be sent and sends nothing.
+  - **Brand**: connected accounts and the shop's time zone. **Ideas**: a simple board. Setup checklist: "Connect social accounts" is live.
+  - 85 automated tests (78 server, 2 web, 5 worker); whole flow clicked through in a browser against a stand-in for Boutiqly.
+- Not done yet in Milestone 2: the real test posts (they need a test Instagram connected to Test Boutique and Katy's yes), then Make Space moving in.
+- Next: Katy connects a throwaway Instagram to Test Boutique → says yes → turns on Live posting there → we send one feed post, one Story set and one text post and check them. Then install in Make Space's sub-account. Then Milestone 3.
+- Waiting on Katy: the test Instagram; the two Milestone 1 checks (request-access screen, phone app); live scope doc owner rule; Make Space's engine and brand docs before Milestone 3.
+- Risks: the media upload field names and the exact planner responses are from the API descriptions, not yet a live call; the first real upload and post in Test Boutique will confirm them. Uploads are held in memory (100 MB cap) on a 512 MB server: fine for testing, revisit before clients upload lots of video.
+
 ## Oct 3, 2026: session 1 (stack, skeleton, the tab live inside Boutiqly)
 
 - Done:

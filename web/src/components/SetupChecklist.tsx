@@ -7,7 +7,15 @@ interface Step {
   action?: { label: string; onClick: () => void };
 }
 
-export function SetupChecklist({ hasOwner, onOpenTeam }: { hasOwner: boolean; onOpenTeam: () => void }) {
+export function SetupChecklist({
+  hasOwner,
+  accountsConnected,
+  onOpenTeam,
+}: {
+  hasOwner: boolean;
+  accountsConnected: boolean;
+  onOpenTeam: () => void;
+}) {
   const steps: Step[] = [
     {
       title: "Name the shop's owner",
@@ -22,8 +30,10 @@ export function SetupChecklist({ hasOwner, onOpenTeam }: { hasOwner: boolean; on
     },
     {
       title: "Connect social accounts",
-      text: "Check which accounts are connected in Boutiqly's social planner.",
-      state: "soon",
+      text: accountsConnected
+        ? "Done. Add more any time in Boutiqly's social planner."
+        : "Connect the shop's Instagram, Facebook and other accounts in Boutiqly's social planner.",
+      state: accountsConnected ? "done" : "todo",
     },
   ];
 
