@@ -252,3 +252,17 @@ export const proposals = pgTable("proposals", {
   decidedAt: ts("decided_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
+
+// brand_fonts.data (the file bytes) is read with plain SQL, never through Drizzle.
+export const brandFonts = pgTable("brand_fonts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull(),
+  family: text("family").notNull(),
+  weight: integer("weight").notNull().default(400),
+  italic: boolean("italic").notNull().default(false),
+  format: text("format", { enum: ["woff2", "woff", "truetype", "opentype"] }).notNull(),
+  fileName: text("file_name").notNull().default(""),
+  sizeBytes: integer("size_bytes").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});

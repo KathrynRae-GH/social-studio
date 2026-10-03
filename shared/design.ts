@@ -9,8 +9,18 @@ export interface StyleColor {
   role: "background" | "text" | "accent" | "highlight" | "other";
 }
 
+// A font file the shop uploaded (not on Google Fonts).
+export interface CustomFont {
+  id: string;
+  family: string;
+  weight: number; // 100..900
+  italic: boolean;
+  format: "woff2" | "woff" | "truetype" | "opentype";
+}
+
 export interface StyleSetView {
   colors: StyleColor[];
+  customFonts: CustomFont[];
   headingFont: string;
   bodyFont: string;
   vibe: string;
@@ -61,6 +71,7 @@ export const FALLBACK_STYLE: StyleSetView = {
     { name: "Pale Mint", hex: "#c4e5e2", role: "highlight" },
     { name: "Green", hex: "#276f3d", role: "other" },
   ],
+  customFonts: [],
   headingFont: "Montserrat",
   bodyFont: "Montserrat",
   vibe: "Plain, warm and clear. Simple layouts with lots of space.",
@@ -104,11 +115,31 @@ export function brandVariables(style: StyleSetView): Record<string, string> {
   return vars;
 }
 
-export function googleFontsHref(style: StyleSetView): string {
-  const families = [...new Set([style.headingFont, style.bodyFont])]
-    .map((f) => `family=${f.trim().replace(/ /g, "+")}:wght@300;400;500;600;700;800`)
-    .join("&");
-  return `https://fonts.googleapis.com/css2?${families}&display=block`;
+const uploaded = (style: StyleSetView, family: string) =>
+  (style.customFonts ?? []).some((f) => f.family.toLowerCase() === family.toLowerCase());
+
+// The Google Fonts address for the families that aren't uploaded, or null
+// when both fonts are the shop's own.
+export function googleFontsHref(style: StyleSetView): string | null {
+  const families = [...new Set([style.headingFont, style.bodyFont])].filter((f) => !uploaded(style, f));
+  if (families.length === 0) return null;
+  const query = families.map((f) => `family=${f.trim().replace(/ /g, "+")}:wght@300;400;500;600;700;800`).join("&");
+  return `https://fonts.googleapis.com/css2?${query}&display=block`;
+}
+
+// Where the renderer fetches an uploaded font (answered by the worker from
+// the database, for the job's own shop only).
+export const fontRenderUrl = (id: string) => `https://fonts.render.local/${id}`;
+
+// @font-face rules for the shop's uploaded fonts. urls maps font id to an
+// address (the tab passes data: addresses for its preview).
+export function fontFaces(style: StyleSetView, urls: Record<string, string> = {}): string {
+  return (style.customFonts ?? [])
+    .map(
+      (f) =>
+        `@font-face { font-family: "${f.family}"; src: url("${urls[f.id] ?? fontRenderUrl(f.id)}") format("${f.format}"); font-weight: ${f.weight}; font-style: ${f.italic ? "italic" : "normal"}; font-display: block; }`,
+    )
+    .join("\n");
 }
 
 function escapeHtml(s: string): string {
@@ -137,16 +168,24 @@ export function assetRefs(design: Pick<Design, "css" | "frames">): string[] {
 }
 
 // The full HTML document for one frame, exactly as the worker renders it.
-export function frameDocument(design: Pick<Design, "size" | "css" | "frames">, index: number, style: StyleSetView, assetUrls: Record<string, string>): string {
+export function frameDocument(
+  design: Pick<Design, "size" | "css" | "frames">,
+  index: number,
+  style: StyleSetView,
+  assetUrls: Record<string, string>,
+  fontUrls: Record<string, string> = {},
+): string {
   const { width, height } = SIZES[design.size];
   const swap = (s: string) =>
     s.replace(/asset:([0-9a-f-]{36}|logo)/gi, (_m, id: string) => assetUrls[id] ?? "about:blank");
   const vars = Object.entries(brandVariables(style)).map(([k, v]) => `${k}: ${v};`).join(" ");
   const frame = design.frames[index];
+  const google = googleFontsHref(style);
   return `<!doctype html>
 <html><head><meta charset="utf-8">
-<link rel="stylesheet" href="${escapeHtml(googleFontsHref(style))}">
+${google ? `<link rel="stylesheet" href="${escapeHtml(google)}">` : ""}
 <style>
+${fontFaces(style, fontUrls)}
 :root { ${vars} --frame-width: ${width}px; --frame-height: ${height}px; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; width: ${width}px; height: ${height}px; overflow: hidden; }

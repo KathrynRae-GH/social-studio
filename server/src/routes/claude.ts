@@ -10,6 +10,8 @@ import { ask, decideProposal, getConversation, listConversations, type AskDeps }
 import { approveStyleSet, getStyleSet, saveStyleSet } from "../styles.ts";
 import { finishBlur, listAssetDetails, startBlur, tagAsset, updateAssetRules } from "../assets.ts";
 import { finishRender } from "../render.ts";
+import multipart from "@fastify/multipart";
+import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../fonts.ts";
 import { getPiece } from "../library.ts";
 import type { AskEvent } from "../../../shared/ask.ts";
 
@@ -60,6 +62,32 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
   app.get("/api/style", async (req) => ({ style: await getStyleSet(db, await viewerFrom(req)) }));
   app.put<{ Body: Body }>("/api/style", async (req) => ({ style: await saveStyleSet(db, await viewerFrom(req), req.body ?? {}) }));
   app.post("/api/style/approve", async (req) => ({ style: await approveStyleSet(db, await viewerFrom(req)) }));
+
+  // ---- Uploaded fonts ----
+  await app.register(multipart, { limits: { fileSize: MAX_FONT_BYTES + 1, files: 1, fields: 5 } });
+  app.get("/api/fonts", async (req) => ({ fonts: await listFonts(db, await viewerFrom(req)) }));
+  app.post("/api/fonts", async (req) => {
+    const viewer = await viewerFrom(req);
+    requirePermission(viewer, "manage_brand");
+    const file = await req.file();
+    if (!file) throw new AccessError("Choose a font file to upload.", 400);
+    const bytes = await file.toBuffer().catch(() => {
+      throw new AccessError("That font file is over 5 MB.", 413);
+    });
+    const field = (name: string) => {
+      const f = file.fields[name] as { value?: unknown } | undefined;
+      return f && "value" in f ? f.value : undefined;
+    };
+    return { font: await uploadFont(db, deps.ask.pool, viewer, { bytes: new Uint8Array(bytes), fileName: file.filename, family: field("family"), weight: field("weight"), italic: field("italic") }) };
+  });
+  app.delete<{ Params: { id: string } }>("/api/fonts/:id", async (req) => {
+    await deleteFont(db, await viewerFrom(req), req.params.id);
+    return { ok: true };
+  });
+  app.get<{ Params: { id: string } }>("/api/fonts/:id/file", async (req, reply) => {
+    const f = await fontFile(deps.ask.pool, await viewerFrom(req), req.params.id);
+    return reply.type(f.mime).header("cache-control", "private, max-age=3600").send(f.data);
+  });
 
   // ---- Assets ----
   app.get("/api/assets", async (req) => ({ assets: await listAssetDetails(db, await viewerFrom(req)) }));

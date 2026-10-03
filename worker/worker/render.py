@@ -8,7 +8,8 @@ listed (the shop's own media addresses).
 from __future__ import annotations
 
 import os
-from typing import Any
+import re
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 # Local development only: the stand-in for Boutiqly serves files over http,
@@ -27,7 +28,7 @@ def csp(allowed_hosts: list[str]) -> str:
         "default-src 'none'; script-src 'none'; "
         f"img-src data: {imgs}; "
         "style-src 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src https://fonts.gstatic.com data:"
+        "font-src https://fonts.gstatic.com https://fonts.render.local data:"
     )
 
 
@@ -54,10 +55,43 @@ def _fetch_font(url: str, user_agent: str) -> tuple[str, bytes] | None:
     return item
 
 
-def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list[str]):
+UPLOADED_FONT_HOST = "fonts.render.local"
+FONT_MIME = {"woff2": "font/woff2", "woff": "font/woff", "truetype": "font/ttf", "opentype": "font/otf"}
+UUID = re.compile(r"^[0-9a-f-]{36}$", re.I)
+
+# Loads one of the shop's uploaded fonts: (format, bytes) or None.
+FontLoader = Callable[[str], "tuple[str, bytes] | None"]
+
+
+def db_font_loader(conn, brand_id: str | None) -> FontLoader:
+    def load(font_id: str):
+        if not brand_id or not UUID.match(font_id):
+            return None
+        row = conn.execute(
+            "SELECT format, data FROM brand_fonts WHERE id = %s AND brand_id = %s", (font_id, brand_id)
+        ).fetchone()
+        return (row[0], bytes(row[1])) if row else None
+
+    return load
+
+
+def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list[str], load_font: FontLoader | None = None):
     def route(r) -> None:
         url = r.request.url
         parsed = urlparse(url)
+        if parsed.scheme == "https" and parsed.netloc == UPLOADED_FONT_HOST:
+            font_id = parsed.path.strip("/")
+            try:
+                got = load_font(font_id) if load_font else None
+            except Exception as exc:  # noqa: BLE001
+                print(f"Uploaded font {font_id} not loaded: {exc}", flush=True)
+                got = None
+            if got is None:
+                blocked.append(url)
+                r.abort()
+            else:
+                r.fulfill(status=200, content_type=FONT_MIME.get(got[0], "application/octet-stream"), body=got[1])
+            return
         if parsed.scheme == "https" and parsed.netloc in FONT_HOSTS:
             got = _fetch_font(url, r.request.headers.get("user-agent", "Mozilla/5.0"))
             if got is None:
@@ -83,7 +117,9 @@ def _router(doc: str, allowed: set[str], allowed_hosts: list[str], blocked: list
     return route
 
 
-def render_frames(docs: list[str], width: int, height: int, allowed_hosts: list[str]) -> tuple[list[bytes], list[str]]:
+def render_frames(
+    docs: list[str], width: int, height: int, allowed_hosts: list[str], load_font: FontLoader | None = None
+) -> tuple[list[bytes], list[str]]:
     """Returns (png bytes per frame, urls that were blocked)."""
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
@@ -102,7 +138,7 @@ def render_frames(docs: list[str], width: int, height: int, allowed_hosts: list[
             context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1)
             for doc in docs:
                 page = context.new_page()
-                page.route("**/*", _router(doc, allowed, allowed_hosts, blocked))
+                page.route("**/*", _router(doc, allowed, allowed_hosts, blocked, load_font))
                 page.goto(FRAME_URL, wait_until="domcontentloaded", timeout=30_000)
                 # Fonts and photos loaded before the picture is taken, with a
                 # time limit each so a slow host can't hang the worker.
@@ -183,7 +219,13 @@ def render_job(conn, job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     docs = payload.get("docs") or []
     if not docs or len(docs) > 10:
         raise ValueError("A render needs 1 to 10 frames")
-    pngs, blocked = render_frames(docs, int(payload["width"]), int(payload["height"]), list(payload.get("allowedHosts") or []))
+    pngs, blocked = render_frames(
+        docs,
+        int(payload["width"]),
+        int(payload["height"]),
+        list(payload.get("allowedHosts") or []),
+        db_font_loader(conn, payload.get("brandId")),
+    )
     store_outputs(conn, job_id, pngs)
     return {"frames": len(pngs), "blocked": blocked[:20]}
 

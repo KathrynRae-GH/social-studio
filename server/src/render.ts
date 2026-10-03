@@ -65,7 +65,7 @@ export async function startRender(deps: RenderDeps, brand: Brand, pieceId: strin
   const { width, height } = SIZES[design.size];
   const allowedHosts = [...new Set([...Object.values(urls)].map((u) => new URL(u).host))];
   const docs = design.frames.map((_f, i) => frameDocument(design, i, style, urls));
-  const jobId = await enqueueJob(deps.pool, brand.id, "render", { docs, width, height, allowedHosts, pieceId });
+  const jobId = await enqueueJob(deps.pool, brand.id, "render", { docs, width, height, allowedHosts, pieceId, brandId: brand.id });
   await deps.db
     .update(pieces)
     .set({ design: { ...design, renderJobId: jobId, renderedAt: null, renderError: null }, updatedAt: new Date() })

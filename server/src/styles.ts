@@ -6,6 +6,7 @@ import type { Db } from "./db/pool.ts";
 import { assets, styleSets } from "./db/schema.ts";
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "./brands.ts";
 import { FALLBACK_STYLE, validColor, validFont, type StyleColor, type StyleSetView } from "../../shared/design.ts";
+import { fontsFor } from "./fonts.ts";
 
 type Row = typeof styleSets.$inferSelect;
 
@@ -18,6 +19,7 @@ async function logoUrl(db: Db, brand: Brand, assetId: string | null): Promise<st
 async function view(db: Db, brand: Brand, row: Row): Promise<StyleSetView> {
   return {
     colors: row.colors,
+    customFonts: await fontsFor(db, brand),
     headingFont: row.headingFont,
     bodyFont: row.bodyFont,
     vibe: row.vibe,
@@ -34,7 +36,7 @@ async function view(db: Db, brand: Brand, row: Row): Promise<StyleSetView> {
 export async function getStyleSet(db: Db, viewer: Viewer): Promise<StyleSetView> {
   const brand = requirePermission(viewer, "use_tab");
   const [row] = await db.select().from(styleSets).where(eq(styleSets.brandId, brand.id));
-  return row ? view(db, brand, row) : FALLBACK_STYLE;
+  return row ? view(db, brand, row) : { ...FALLBACK_STYLE, customFonts: await fontsFor(db, brand) };
 }
 
 // What Claude designs with: only an approved set, never a draft.
@@ -74,7 +76,7 @@ export async function saveStyleSet(db: Db, viewer: Viewer, input: StyleInput): P
   }
   for (const key of ["headingFont", "bodyFont"] as const) {
     if (input[key] === undefined) continue;
-    if (!validFont(input[key])) throw new AccessError("Pick a Google font by its name, like Montserrat or Playfair Display.", 400);
+    if (!validFont(input[key])) throw new AccessError("Pick a font by its name: a Google font like Montserrat, or one you've uploaded.", 400);
     next[key] = (input[key] as string).trim();
   }
   for (const key of ["vibe", "dosDonts"] as const) {

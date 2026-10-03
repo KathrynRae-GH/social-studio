@@ -92,3 +92,15 @@ Claude (technical):
 - **Rendering happens in the worker** with headless Chromium. Page scripts are blocked, every request is refused except the shop's own media addresses and Google Fonts (which the worker fetches itself, with a time limit), and each wait has a time limit. Rendered PNGs go into the shop's Boutiqly media storage and onto the piece.
 - **The worker now runs as a Docker image** (Microsoft's Playwright image, `worker/Dockerfile`) so Chromium's system libraries are there. Same service, plan and price; `render.yaml` switches its runtime in place. It only takes job kinds it can handle.
 - **Assets:** Claude tags each photo on upload while Claude is on (description, tags, people, possible minor, private details with boxes). A blurred copy is made by the worker (pixelate and blur) as a new file; the original stays as it was.
+
+## Oct 3, 2026 (night): uploaded brand fonts
+
+Katy:
+- Shops can upload their own brand fonts (not every brand font is on Google Fonts).
+
+Claude (technical):
+- Font files are kept in our database (`brand_fonts`, 5 MB each), not in Boutiqly media storage, which is built for photos and videos. Files are checked by their first bytes (woff2, woff, ttf, otf only).
+- Designs load uploaded fonts with `@font-face` from `fonts.render.local/<id>`. The worker answers those requests from the database, only for the job's own shop. The Google Fonts link only asks for families that aren't uploaded.
+- The tab's Look sample shows the real font by fetching it with the sign-in pass and embedding it.
+- Removing a font the approved look uses puts the look back to draft.
+- Owners are reminded that their font license must allow use in social media images; we don't check licenses.

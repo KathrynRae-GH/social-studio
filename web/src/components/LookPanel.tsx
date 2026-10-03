@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Me } from "../../../shared/roles.ts";
 import type { AssetDetail } from "../../../shared/content.ts";
 import { FALLBACK_STYLE, SIZES, frameDocument, sampleDesign, type StyleColor, type StyleSetView } from "../../../shared/design.ts";
-import { api } from "../boutiqly.ts";
+import { api, fontDataUrl, type UploadedFont } from "../boutiqly.ts";
 import { ErrorNote } from "./bits.tsx";
 
 const ROLES: StyleColor["role"][] = ["background", "text", "accent", "highlight", "other"];
@@ -20,6 +20,21 @@ const POPULAR_FONTS = [
 ];
 
 const SAMPLE_SCALE = 0.25;
+const WEIGHTS = [
+  [100, "Thin"], [200, "Extra light"], [300, "Light"], [400, "Regular"], [500, "Medium"],
+  [600, "Semibold"], [700, "Bold"], [800, "Extra bold"], [900, "Black"],
+] as const;
+
+// "RiotSans-Bold.woff2" → "Riot Sans" (the same guess the server makes)
+function familyGuess(name: string): string {
+  const base = name.replace(/\.[^.]+$/, "").split(/[-_]/)[0] ?? "";
+  return base.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[^A-Za-z0-9 ]/g, "").trim().slice(0, 40);
+}
+function weightGuess(name: string): number {
+  const n = name.toLowerCase();
+  const found = [["black", 900], ["extrabold", 800], ["semibold", 600], ["bold", 700], ["medium", 500], ["light", 300], ["thin", 100]] as const;
+  return found.find(([w]) => n.includes(w))?.[1] ?? 400;
+}
 
 // The shop's look: colors, fonts, logo and notes, with a live sample tile
 // drawn by the same engine Claude designs with.
@@ -27,6 +42,9 @@ export function LookPanel({ me }: { me: Me }) {
   const [saved, setSaved] = useState<StyleSetView | null>(null);
   const [draft, setDraft] = useState<StyleSetView>(FALLBACK_STYLE);
   const [images, setImages] = useState<AssetDetail[]>([]);
+  const [fonts, setFonts] = useState<UploadedFont[]>([]);
+  const [fontUrls, setFontUrls] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<{ file: File; family: string; weight: number; italic: boolean } | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const canEdit = me.permissions.includes("manage_brand");
@@ -34,12 +52,50 @@ export function LookPanel({ me }: { me: Me }) {
   useEffect(() => {
     api.style().then((r) => { setSaved(r.style); setDraft(r.style); }, (e: Error) => setError(e.message));
     if (canEdit) api.assets().then((r) => setImages(r.assets.filter((a) => a.mime.startsWith("image/") && a.madeBy !== "render")), () => {});
+    api.fonts().then((r) => setFonts(r.fonts), () => {});
   }, [canEdit]);
+
+  // Each uploaded font as a data address, so the sample shows the real thing.
+  useEffect(() => {
+    for (const f of fonts) {
+      if (fontUrls[f.id]) continue;
+      fontDataUrl(f.id).then((url) => setFontUrls((u) => ({ ...u, [f.id]: url })), () => {});
+    }
+  }, [fonts, fontUrls]);
 
   const sample = useMemo(() => {
     const logo = draft.logoAssetId ? images.find((i) => i.id === draft.logoAssetId)?.url ?? draft.logoUrl : null;
-    return frameDocument(sampleDesign(me.brand?.name ?? ""), 0, draft, logo ? { logo } : {});
-  }, [draft, images, me.brand?.name]);
+    const loaded = fonts.filter((f) => fontUrls[f.id]);
+    return frameDocument(sampleDesign(me.brand?.name ?? ""), 0, { ...draft, customFonts: loaded }, logo ? { logo } : {}, fontUrls);
+  }, [draft, images, me.brand?.name, fonts, fontUrls]);
+
+  async function uploadFont() {
+    if (!pending) return;
+    setError("");
+    setBusy("Uploading the font…");
+    try {
+      await api.uploadFont(pending.file, { family: pending.family, weight: pending.weight, italic: pending.italic });
+      setFonts((await api.fonts()).fonts);
+      setPending(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeFont(id: string) {
+    setError("");
+    try {
+      await api.deleteFont(id);
+      setFonts((await api.fonts()).fonts);
+      const { style } = await api.style(); // removing a font in use puts the look back to draft
+      setSaved(style);
+      setDraft((d) => ({ ...d, customFonts: style.customFonts }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   const changed = JSON.stringify(stripMeta(draft)) !== JSON.stringify(saved ? stripMeta(saved) : null);
 
@@ -133,7 +189,10 @@ export function LookPanel({ me }: { me: Me }) {
           )}
 
           <h3>Fonts</h3>
-          <datalist id="google-fonts">{POPULAR_FONTS.map((f) => <option key={f} value={f} />)}</datalist>
+          <datalist id="google-fonts">
+            {[...new Set(fonts.map((f) => f.family))].map((f) => <option key={`u-${f}`} value={f}>Uploaded</option>)}
+            {POPULAR_FONTS.map((f) => <option key={f} value={f} />)}
+          </datalist>
           <div className="field-row">
             <label className="field grow">
               <span>Headings</span>
@@ -144,7 +203,67 @@ export function LookPanel({ me }: { me: Me }) {
               <input list="google-fonts" value={draft.bodyFont} onChange={(e) => setDraft((d) => ({ ...d, bodyFont: e.target.value }))} disabled={!canEdit} />
             </label>
           </div>
-          <p className="muted small">Any font from Google Fonts, by its exact name.</p>
+          <p className="muted small">Any font from Google Fonts by its exact name, or one of the shop's uploaded fonts below.</p>
+
+          <h3>Uploaded fonts</h3>
+          {fonts.length === 0 && <p className="muted small">None yet.</p>}
+          <ul className="font-list">
+            {fonts.map((f) => (
+              <li key={f.id}>
+                <span style={fontUrls[f.id] ? { fontFamily: `"ss-${f.id}"` } : undefined}>
+                  <strong>{f.family}</strong> <span className="muted small">{WEIGHTS.find(([w]) => w === f.weight)?.[1] ?? f.weight}{f.italic ? " italic" : ""} · {f.fileName}</span>
+                </span>
+                {canEdit && <button className="btn-link small" onClick={() => void removeFont(f.id)}>Remove</button>}
+              </li>
+            ))}
+          </ul>
+          <style>{fonts.filter((f) => fontUrls[f.id]).map((f) => `@font-face{font-family:"ss-${f.id}";src:url("${fontUrls[f.id]}") format("${f.format}");font-weight:${f.weight};font-style:${f.italic ? "italic" : "normal"}}`).join("\n")}</style>
+          {canEdit && (
+            <>
+              {pending ? (
+                <div className="card-inset font-upload">
+                  <div className="field-row">
+                    <label className="field grow">
+                      <span>Font name</span>
+                      <input value={pending.family} onChange={(e) => setPending({ ...pending, family: e.target.value })} maxLength={40} />
+                    </label>
+                    <label className="field">
+                      <span>Weight</span>
+                      <select value={pending.weight} onChange={(e) => setPending({ ...pending, weight: Number(e.target.value) })}>
+                        {WEIGHTS.map(([w, label]) => <option key={w} value={w}>{label} ({w})</option>)}
+                      </select>
+                    </label>
+                    <label className="check">
+                      <input type="checkbox" checked={pending.italic} onChange={(e) => setPending({ ...pending, italic: e.target.checked })} />
+                      Italic
+                    </label>
+                  </div>
+                  <p className="muted small">{pending.file.name}. Upload each weight (regular, bold…) as its own file with the same font name.</p>
+                  <div className="field-row">
+                    <button className="btn-secondary small" onClick={() => void uploadFont()} disabled={!!busy || !pending.family.trim()}>Upload this font</button>
+                    <button className="btn-link small" onClick={() => setPending(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <label className="btn-secondary small">
+                  Upload a font
+                  <input
+                    type="file"
+                    accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setPending({ file, family: familyGuess(file.name), weight: weightGuess(file.name), italic: /italic|oblique/i.test(file.name) });
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+              <p className="muted small">
+                Not on Google Fonts? Upload the font file your designer gave you (.woff2, .woff, .ttf or .otf). Make sure your license allows using it in social media images.
+              </p>
+            </>
+          )}
 
           <h3>Logo</h3>
           {canEdit ? (
