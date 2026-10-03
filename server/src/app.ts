@@ -27,17 +27,21 @@ import { NotInstalledError, BoutiqlyError, boutiqlyClient } from "./boutiqly/api
 import { completeInstall } from "./boutiqly/installs.ts";
 import { healthReport, healthPage } from "./health.ts";
 import { contentRoutes } from "./routes/content.ts";
+import { autoTagger, claudeRoutes } from "./routes/claude.ts";
+import { anthropicApi, type ClaudeApi } from "./claude/client.ts";
+import type { AskDeps } from "./claude/ask.ts";
 
 export interface AppDeps {
   config: Config;
   db: Db;
   pool: pg.Pool;
   fetchImpl?: typeof fetch;
+  claudeApi?: ClaudeApi; // tests pass a scripted stand-in
 }
 
 const WEB_DIST = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
-export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
+export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi }: AppDeps) {
   const app = Fastify({
     // Logs never carry the login pass or query strings (install codes travel in them).
     logger: config.production
@@ -172,14 +176,24 @@ export function buildApp({ config, db, pool, fetchImpl = fetch }: AppDeps) {
     return { team: await listTeam(db, viewer) };
   });
 
+  // ---- Claude (one client for the app; only callClaude uses it) ----
+  let api: ClaudeApi | null = claudeApi ?? null;
+  const lazyApi: ClaudeApi = {
+    send: (params, onText) => (api ??= anthropicApi(config.anthropicApiKey)).send(params, onText),
+  };
+  const calendarDeps = { db, pool, client: clientFor };
+  const askDeps: AskDeps = { db, pool, config, api: lazyApi, render: { db, pool, clientFor }, calendar: calendarDeps };
+
   // ---- Library, Calendar, Ideas, posting ----
   app.register(contentRoutes, {
     db,
-    calendar: { db, pool, client: clientFor },
+    calendar: calendarDeps,
     viewerFrom,
     clientFor,
     fetchImpl,
+    afterUpload: autoTagger({ ...askDeps, fetchImpl }),
   });
+  app.register(claudeRoutes, { db, ask: askDeps, fetchImpl, viewerFrom });
 
   // ---- App install (OAuth) ----
   app.get<{ Querystring: { code?: string } }>("/oauth/callback", async (req, reply) => {

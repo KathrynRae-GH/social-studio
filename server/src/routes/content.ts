@@ -33,6 +33,7 @@ interface Deps {
   viewerFrom: (req: FastifyRequest) => Promise<Viewer>;
   clientFor: (brand: Brand) => BoutiqlyClient;
   fetchImpl: typeof fetch;
+  afterUpload?: (viewer: Viewer, brand: Brand, assetId: string, mime: string) => void;
 }
 
 type Body = Record<string, unknown>;
@@ -54,15 +55,15 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
 
     const name = file.filename.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "upload";
     const uploaded = await storeFile(db, brand, clientFor(brand), { bytes: new Uint8Array(buffer), mime: file.mimetype, name });
-    return {
-      asset: await addAsset(db, viewer, {
-        boutiqlyFileId: uploaded.fileId,
-        url: uploaded.url,
-        mime: file.mimetype,
-        name,
-        sizeBytes: buffer.length,
-      }),
-    };
+    const asset = await addAsset(db, viewer, {
+      boutiqlyFileId: uploaded.fileId,
+      url: uploaded.url,
+      mime: file.mimetype,
+      name,
+      sizeBytes: buffer.length,
+    });
+    deps.afterUpload?.(viewer, brand, asset.id, asset.mime);
+    return { asset };
   });
 
   // ---- Library ----

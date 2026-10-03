@@ -3,6 +3,7 @@ import { loadConfig, type Config } from "../src/config.ts";
 import { createDb } from "../src/db/pool.ts";
 import { migrate } from "../src/db/migrate.ts";
 import { buildApp } from "../src/app.ts";
+import type { ClaudeApi } from "../src/claude/client.ts";
 
 export const TEST_SECRET = "test-shared-secret";
 
@@ -31,16 +32,17 @@ export const people = {
   other: { userId: "u_other", companyId: COMPANY, type: "location", role: "user", userName: "Otto Other", email: "otto@example.com", activeLocation: LOCATION },
 };
 
-export async function testApp(fetchImpl?: typeof fetch) {
+export async function testApp(fetchImpl?: typeof fetch, claudeApi?: ClaudeApi) {
   const config: Config = {
     ...loadConfig(),
+    anthropicApiKey: claudeApi ? "test-key" : "",
     databaseUrl: process.env.TEST_DATABASE_URL ?? "postgres://localhost:5432/social_studio_test",
     boutiqly: { ...loadConfig().boutiqly, sharedSecret: TEST_SECRET, clientId: "cid", clientSecret: "csecret", apiBase: "https://api.test" },
   };
   const { pool, db } = createDb(config.databaseUrl);
   await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
   await migrate(pool, () => {});
-  const app = buildApp({ config, db, pool, fetchImpl });
+  const app = buildApp({ config, db, pool, fetchImpl, claudeApi });
   await app.ready();
   return { app, pool, db, config };
 }
