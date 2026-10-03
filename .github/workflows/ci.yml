@@ -33,6 +33,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r worker/requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
       - name: Worker tests (tables come from the server tests' migrations)
         working-directory: worker
         run: python -m pytest -q

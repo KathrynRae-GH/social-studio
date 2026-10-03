@@ -77,6 +77,8 @@ async function piecesWithDetails(db: Db, brand: Brand, rows: (typeof pieces.$inf
     ),
     onCalendar: entryRows.filter((e) => e.pieceId === p.id).map((e) => ({ channel: e.channel, status: e.status })),
     updatedAt: p.updatedAt.toISOString(),
+    source: p.source,
+    design: p.design ?? null,
   }));
 }
 

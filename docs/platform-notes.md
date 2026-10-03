@@ -46,13 +46,13 @@ From the platform's official marketplace app template (its GitHub repo; the deve
 
 ## Social planner API, as built (Oct 3, 2026)
 
-Read from the operation descriptions in Boutiqly's API (no calls made); confirm each on the first live test in Test Boutique.
+Read from the operation descriptions in Boutiqly's API. **Confirmed live Oct 3, 2026:** Katy's draft test in Girl Riot Society worked end to end: upload to media storage (folder + `upload-file` with these field names) and `POST .../posts` with `status: "draft"` (the post appeared under Drafts).
 
 - Connected accounts: `GET /social-media-posting/{locationId}/accounts` → `results.accounts[]` with `id`, `platform`, `name`, `isExpired`.
 - Create: `POST /social-media-posting/{locationId}/posts` with `accountIds`, `summary`, `media[{url, type, altText}]`, `status: "scheduled"`, `scheduleDate` (UTC), `type` post|story|reel, `userId` (required). Per channel: `instagramPostDetails{type, publishViaPushNotification, publisherNote}` (this is the app ping), `youtubePostDetails{type:"short", title}`, `gmbPostDetails{gmbEventType:"STANDARD"}`, `pinterestPostDetails{boardIds}` (needed for pins), `tiktokPostDetails`.
 - Instagram and Facebook Stories take no caption; Instagram needs media on every post; Reels take exactly one video; Instagram allows at most 30 hashtags.
 - Status: `GET /social-media-posting/{locationId}/posts/{id}` → `published`, `failed`, `notification_sent` (app ping went out), `deleted`…
-- Media: `POST /medias/folder` (`altId`, `altType: "location"`, `name`); upload is multipart `POST /medias/upload-file` (`file`, `name`, `hosted=false`, `parentId`). **Upload field names are from memory: check on the first real upload.**
+- Media: `POST /medias/folder` (`altId`, `altType: "location"`, `name`); upload is multipart `POST /medias/upload-file` (`file`, `name`, `hosted=false`, `parentId`), confirmed by the Girl Riot draft test.
 
 ## Media storage
 

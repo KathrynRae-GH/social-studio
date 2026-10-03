@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Me } from "../../../shared/roles.ts";
 import { AskClaude } from "./AskClaude.tsx";
-import { EmptyScreen } from "../screens/EmptyScreen.tsx";
+import { AssetsScreen } from "../screens/AssetsScreen.tsx";
 import { BrandScreen } from "../screens/BrandScreen.tsx";
 import { CalendarScreen } from "../screens/CalendarScreen.tsx";
 import { LibraryScreen } from "../screens/LibraryScreen.tsx";
@@ -43,9 +43,7 @@ export function Shell({ me }: { me: Me }) {
       <main className="screen">
         {screen === "Calendar" && <CalendarScreen me={me} hasOwner={hasOwner} onOpenTeam={() => setScreen("Brand")} />}
         {screen === "Library" && <LibraryScreen timezone={timezone} />}
-        {screen === "Assets" && (
-          <EmptyScreen title="Assets" text="Your photos and videos will live here, each tagged by Claude and with its people rule. For now, upload files while making a post in the Library." />
-        )}
+        {screen === "Assets" && <AssetsScreen />}
         {screen === "Ideas" && <IdeasScreen />}
         {screen === "Brand" && (
           <BrandScreen me={me} onTeamChange={(team) => setHasOwner(team.some((t) => t.role === "owner"))} />

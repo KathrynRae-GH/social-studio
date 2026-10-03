@@ -1,11 +1,28 @@
 // What the server sends the tab for the Library, Calendar and Ideas.
 import type { EntryStatus, Kind, Route } from "./channels.ts";
+import type { Design, SensitiveFlag } from "./design.ts";
 
 export interface AssetView {
   id: string;
   url: string;
   mime: string;
   name: string;
+}
+
+// A file with what Claude saw in it and the owner's rules for it (Assets screen).
+export interface AssetDetail extends AssetView {
+  createdAt: string;
+  description: string;
+  tags: string[];
+  hasPeople: boolean | null;
+  possibleMinor: boolean;
+  sensitive: SensitiveFlag[];
+  flagsCleared: boolean;
+  peopleRule: "ok" | "no_faces" | "dont_use";
+  tagged: boolean;
+  madeBy: "upload" | "render" | "blur";
+  sourceAssetId: string | null;
+  usable: { ok: boolean; reason: string | null }; // can Claude design with it
 }
 
 export interface CaptionView {
@@ -24,6 +41,8 @@ export interface PieceView {
   captions: Record<string, CaptionView>; // by channel id
   onCalendar: { channel: string; status: EntryStatus }[];
   updatedAt: string;
+  source: "owner" | "claude";
+  design: Design | null;
 }
 
 export interface EntryView {

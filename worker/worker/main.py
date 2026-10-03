@@ -1,7 +1,7 @@
-"""Social Studio worker: renders and long Claude jobs (from Milestone 3).
+"""Social Studio worker: renders designs and blurs flagged details.
 
-For now it proves it's alive (a heartbeat the health page reads) and runs
-jobs from the jobs table.
+It beats a heartbeat the health page reads and runs jobs from the jobs table.
+It only takes render jobs when Chromium works here (it does in the Docker image).
 """
 
 from __future__ import annotations
@@ -13,9 +13,10 @@ import time
 
 import psycopg
 
-from .jobs import run_one
+from .jobs import default_handlers, run_one
+from .render import chromium_available
 
-VERSION = "0.1.0"
+VERSION = "0.3.0"
 HEARTBEAT_EVERY = 30  # seconds
 IDLE_SLEEP = 2  # seconds between empty polls
 
@@ -47,6 +48,8 @@ def main() -> None:
     signal.signal(signal.SIGINT, _stop)
     url = os.environ.get("DATABASE_URL", "postgresql://localhost:5432/social_studio")
     worker_id = os.environ.get("RENDER_INSTANCE_ID") or socket.gethostname()
+    handlers = default_handlers(chromium_available())
+    print(f"Handling jobs: {', '.join(sorted(handlers))}", flush=True)
 
     while not _stopping:
         try:
@@ -61,7 +64,7 @@ def main() -> None:
                     if time.monotonic() - last_beat >= HEARTBEAT_EVERY:
                         heartbeat(conn, worker_id)
                         last_beat = time.monotonic()
-                    if not run_one(conn):
+                    if not run_one(conn, handlers):
                         time.sleep(IDLE_SLEEP)
         except psycopg.OperationalError as exc:
             print(f"Database connection problem, retrying in 10s: {exc}", flush=True)

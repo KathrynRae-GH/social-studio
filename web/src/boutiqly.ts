@@ -1,6 +1,8 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { Me, TeamEntry } from "../../shared/roles.ts";
-import type { ApproveResult, DraftResult, AccountView, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
+import type { StyleColor, StyleSetView } from "../../shared/design.ts";
 
 interface MessageSource {
   postMessage(message: unknown, targetOrigin: string): void;
@@ -121,6 +123,27 @@ export const api = {
   setLivePosting: (on: boolean) =>
     call<{ livePosting: boolean }>("/api/settings/live-posting", { method: "PUT", body: JSON.stringify({ on }) }),
 
+  // Claude
+  claudeStatus: () => call<ClaudeStatus>("/api/claude/status"),
+  setClaude: (input: Partial<{ enabled: boolean; capCents: number }>) =>
+    call<ClaudeStatus>("/api/settings/claude", { method: "PUT", body: JSON.stringify(input) }),
+  style: () => call<{ style: StyleSetView }>("/api/style"),
+  saveStyle: (input: Partial<{ colors: StyleColor[]; headingFont: string; bodyFont: string; vibe: string; dosDonts: string; logoAssetId: string | null }>) =>
+    call<{ style: StyleSetView }>("/api/style", { method: "PUT", body: JSON.stringify(input) }),
+  approveStyle: () => call<{ style: StyleSetView }>("/api/style/approve", { method: "POST", body: "{}" }),
+  assets: () => call<{ assets: AssetDetail[] }>("/api/assets"),
+  setAssetRules: (id: string, input: Partial<{ peopleRule: AssetDetail["peopleRule"]; flagsCleared: boolean }>) =>
+    call<{ asset: AssetDetail }>(`/api/assets/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  tagAsset: (id: string) => call<{ asset: AssetDetail }>(`/api/assets/${id}/tag`, { method: "POST", body: "{}" }),
+  blurAsset: (id: string) => call<{ jobId: string }>(`/api/assets/${id}/blur`, { method: "POST", body: "{}" }),
+  blurResult: (id: string, jobId: string) =>
+    call<{ status: "pending" | "failed" | "done"; asset?: AssetDetail; error?: string }>(`/api/assets/${id}/blur/${jobId}`),
+  pieceRender: (id: string) => call<{ state: "done" | "pending" | "failed"; piece: PieceView }>(`/api/pieces/${id}/render`, { method: "POST", body: "{}" }),
+  conversations: () => call<{ conversations: ConversationSummary[] }>("/api/conversations"),
+  conversation: (id: string) => call<{ conversation: ConversationView }>(`/api/conversations/${id}`),
+  decideProposal: (id: string, decision: "apply" | "dismiss") =>
+    call<{ proposal: ProposalView }>(`/api/proposals/${id}/${decision}`, { method: "POST", body: "{}" }),
+
   // Ideas
   ideas: () => call<{ ideas: IdeaView[] }>("/api/ideas"),
   addIdea: (input: { title: string; pitch: string }) =>
@@ -144,4 +167,34 @@ export async function downloadPack(entryId: string, filename: string): Promise<v
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// Ask Claude streams one JSON event per line while it works.
+export async function askClaude(input: { conversationId: string | null; text: string }, onEvent: (e: AskEvent) => void, retry = true): Promise<void> {
+  const res = await fetch("/api/ask", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 401 && retry) {
+    await signIn();
+    return askClaude(input, onEvent, false);
+  }
+  if (!res.ok || !res.body) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(body.error ?? "Claude couldn't be reached.", res.status);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (line) onEvent(JSON.parse(line) as AskEvent);
+    }
+  }
 }
