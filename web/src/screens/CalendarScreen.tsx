@@ -8,9 +8,9 @@ import { SetupChecklist } from "../components/SetupChecklist.tsx";
 
 type View = "week" | "list" | "month" | "grid";
 const VIEWS: { id: View; label: string }[] = [
+  { id: "month", label: "Month" },
   { id: "week", label: "This week" },
   { id: "list", label: "List" },
-  { id: "month", label: "Month" },
   { id: "grid", label: "Instagram grid" },
 ];
 
@@ -28,7 +28,7 @@ interface Props {
 export function CalendarScreen({ me, hasOwner, onOpenTeam }: Props) {
   const timezone = me.brand?.timezone ?? "America/Chicago";
   const today = todayIn(timezone);
-  const [view, setView] = useState<View>("week");
+  const [view, setView] = useState<View>("month");
   const [month, setMonth] = useState(today.slice(0, 7));
   const [data, setData] = useState<CalendarData | null>(null);
   const [error, setError] = useState("");
