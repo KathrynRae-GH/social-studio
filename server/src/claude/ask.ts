@@ -33,7 +33,8 @@ export interface AskDeps extends ClaudeDeps {
   calendar: CalendarDeps;
 }
 
-const MAX_TURNS = 14;
+const MAX_TURNS = 40; // a request for several pieces needs about 3 steps per piece
+const FULL_FRAMES_SHOWN = 3; // frames shown as pictures after each draft; the rest by id
 const MAX_TAG_PER_CALL = 12;
 const RECENT_LAYOUTS_BLOCKED = 3; // a new piece can't reuse the layouts of the last 3 designs
 const RECENT_SHOWN = 6; // recent designs described in each message
@@ -182,6 +183,7 @@ ${RULES}
 2. Write real copy: an on-brand headline and short lines on the slides, and **a caption for every channel this kind of piece can go to** (see Channels; the owner picks where to post later), each written for that channel, with alt text, in the shop's voice from its vibe notes and dos and don'ts. Only skip channels if the owner says so. Use only facts you have; put [placeholders] where the owner must fill in a price or date.
 3. Every design_piece call makes a real post the owner sees in their Library. Never make tests, color swatches, palette checks, layout experiments or placeholder pieces. You already know every color and font from this prompt.
 4. A carousel has 3–10 frames; a Story set has 2–10.
+5. Asked for several pieces? Make them one at a time and finish each (design, its one review round, captions) before starting the next. After each one, write one short progress line for the owner, like "Story 2 of 4 done: the new-arrivals countdown."
 
 ${designGuide(style)}
 
@@ -635,16 +637,19 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
       const images: ContentBlock[] = frames
         .map((id) => frameRows.find((r) => r.id === id))
         .filter((r): r is { id: string; url: string } => !!r)
-        .flatMap((r, i) => [
-          { type: "text" as const, text: `Frame ${i + 1}:` },
-          { type: "image" as const, source: { type: "url" as const, url: r.url } },
-        ]);
+        .flatMap((r, i) =>
+          i < FULL_FRAMES_SHOWN
+            ? [
+                { type: "text" as const, text: `Frame ${i + 1}:` },
+                { type: "image" as const, source: { type: "url" as const, url: r.url } },
+              ]
+            : [{ type: "text" as const, text: `Frame ${i + 1}: asset ${r.id} (call look_at_image to see it if you need to)` }],
+        );
+      // One review round per piece (draft 1 → draft 2), then it's final.
       const next =
         draft === 1
           ? `This is draft 1. Required before you reply to the owner: ${CRITIQUE}\nThen call design_piece again with piece_id ${pieceId} and the improved design (keep the captions unless they need changing).`
-          : draft >= 3
-            ? `This is the final draft for this turn.${missing.length ? ` First add the missing captions (${missing.join(", ")}) with one more design_piece call on piece_id ${pieceId} without a design.` : ""} Then reply to the owner: say in a sentence or two what you made and why, and offer one or two specific directions they could ask for next.`
-            : `This is draft ${draft}. ${CRITIQUE}\nIf something is still clearly weak, call design_piece once more with piece_id ${pieceId}; otherwise reply to the owner with a sentence or two on what you made and why.`;
+          : `This is the final draft of this piece for now.${missing.length ? ` First add the missing captions (${missing.join(", ")}) with one more design_piece call on piece_id ${pieceId} without a design.` : ""} Then, if the owner asked for more pieces, write a one-line progress note and start the next one; otherwise reply to the owner: say in a sentence or two what you made and why, and offer one or two specific directions they could ask for next.`;
       return { content: [{ type: "text", text: summary }, ...images, { type: "text", text: next }] };
     }
     case "propose_change": {
@@ -711,7 +716,7 @@ export async function getConversation(db: Db, viewer: Viewer, id: string, pool?:
     }
     for (const b of content) {
       if (b.type === "text" && b.text.trim()) {
-        if (m.role === "user" && b.text.startsWith("The shop's inspiration board")) continue;
+        if (m.role === "user" && HIDDEN_NOTES.some((n) => b.text.startsWith(n))) continue;
         // The note we add in front of each message (date, sender) isn't shown.
         items.push({ kind: m.role === "user" ? "user" : "claude", text: m.role === "user" ? b.text.replace(/^\[[^\]]*\]\n/, "") : b.text });
       }
@@ -750,7 +755,8 @@ export async function getConversation(db: Db, viewer: Viewer, id: string, pool?:
   }
   // Still working if another request holds this chat's lock.
   const working = pool ? (await tryWithLock(pool, `ask:${c.id}`, async () => true)) === null : false;
-  return { id: c.id, title: c.title || "New chat", working, items, pieces: pieceViews };
+  const interrupted = !working && waitsForClaude(msgs);
+  return { id: c.id, title: c.title || "New chat", working, interrupted, items, pieces: pieceViews };
 }
 
 async function append(db: Db, conversationId: string, role: "user" | "assistant", content: unknown) {
@@ -774,6 +780,44 @@ function forRequest(history: MessageParam[]): MessageParam[] {
   return out;
 }
 
+// Replies in progress in this server process, so an update (Render stopping
+// this copy of the app) can wait for them to finish.
+let activeRuns = 0;
+export function activeAskRuns(): number {
+  return activeRuns;
+}
+
+// Hidden notes added to the shop's message for Claude (never shown as the owner's words).
+const HIDDEN_NOTES = ["The shop's inspiration board", "The owner's verdicts on recent posts", "The shop's most recent designs"];
+
+const INTERRUPTED_NOTE = "(I was interrupted before I could finish that one.)";
+
+// True when the chat's last saved message still waits for Claude: the reply
+// was cut off (the app restarted) before Claude answered.
+function waitsForClaude(stored: { role: string; content: unknown }[]): boolean {
+  const last = stored[stored.length - 1];
+  if (!last) return false;
+  if (last.role === "user") return true;
+  return Array.isArray(last.content) && (last.content as ContentBlock[]).some((b) => b.type === "tool_use");
+}
+
+// Makes a cut-off chat valid to continue: answers any tool calls that never
+// got results, then closes Claude's turn with a short note.
+async function repairCutOff(db: Db, conversationId: string, stored: { role: string; content: unknown }[], history: MessageParam[]) {
+  if (!waitsForClaude(stored)) return;
+  const last = stored[stored.length - 1]!;
+  if (last.role === "assistant") {
+    const results = (last.content as ContentBlock[])
+      .filter((b): b is Anthropic.Beta.BetaToolUseBlockParam => b.type === "tool_use")
+      .map((b) => ({ type: "tool_result" as const, tool_use_id: b.id, content: "Interrupted before this finished.", is_error: true }));
+    history.push({ role: "user", content: results });
+    await append(db, conversationId, "user", results);
+  }
+  const note: ContentBlock[] = [{ type: "text", text: INTERRUPTED_NOTE }];
+  history.push({ role: "assistant", content: note });
+  await append(db, conversationId, "assistant", note);
+}
+
 export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId?: unknown; text?: unknown }, emit: (e: AskEvent) => void): Promise<void> {
   const brand = requirePermission(viewer, "use_tab");
   const text = typeof input.text === "string" ? input.text.trim() : "";
@@ -790,6 +834,16 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
   emit({ type: "start", conversationId });
 
   const ran = await tryWithLock(deps.pool, `ask:${conversationId}`, async () => {
+    activeRuns++;
+    try {
+      return await runAsk();
+    } finally {
+      activeRuns--;
+    }
+  });
+  if (!ran) emit({ type: "error", message: "Claude is still working on your last message in this chat." });
+
+  async function runAsk(): Promise<boolean> {
     const style = await styleForDesign(deps.db, brand);
     const tz = brandTimezone(brand);
     const now = utcToZoned(new Date(), tz);
@@ -798,6 +852,7 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
     ];
     const stored = await deps.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversationId)).orderBy(asc(conversationMessages.id));
     const history: MessageParam[] = stored.map((m) => ({ role: m.role, content: m.content as MessageParam["content"] }));
+    await repairCutOff(deps.db, conversationId, stored, history);
     const userContent: ContentBlock[] = [];
     if (stored.length === 0) {
       // A new chat starts with the shop's inspiration board, so it's part of
@@ -838,8 +893,10 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
 
     const runCtx: RunCtx = { drafts: new Map(), deps, viewer, brand, conversationId, emit };
     let total = 0;
+    let closing: string | null = null; // a note for the chat when Claude stops without a final reply
     try {
-      for (let turn = 0; turn < MAX_TURNS; turn++) {
+      let turn = 0;
+      for (; turn < MAX_TURNS; turn++) {
         const { message, costCents } = await callClaude(
           deps,
           { brand, userId: viewer.ctx.userId, purpose: "ask_claude", refId: conversationId },
@@ -880,17 +937,31 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
         history.push({ role: "user", content: results });
         await append(deps.db, conversationId, "user", results);
       }
+      if (turn >= MAX_TURNS) {
+        console.warn(`[ask] ${conversationId} reached the step limit (${MAX_TURNS})`);
+        closing = 'I ran out of steps for this reply before finishing. What I made so far is in the Library. Say "keep going" and I\'ll pick up where I left off.';
+      }
     } catch (err) {
-      if (err instanceof ClaudePausedError) emit({ type: "error", message: err.message });
-      else {
+      if (err instanceof ClaudePausedError) {
+        emit({ type: "error", message: err.message });
+        closing = err.message;
+      } else {
         console.error(`[ask] conversation ${conversationId} failed: ${(err as Error).message}`);
         emit({ type: "error", message: "Something went wrong talking to Claude. Try again in a moment." });
+        closing = 'Something went wrong talking to Claude, so I stopped here. Say "keep going" to try again from where I left off.';
       }
+    }
+    // Leave the note in the chat itself (only where Claude's turn is still open,
+    // so the saved conversation stays valid to continue).
+    if (closing && history[history.length - 1]?.role === "user") {
+      const note: ContentBlock[] = [{ type: "text", text: closing }];
+      history.push({ role: "assistant", content: note });
+      await append(deps.db, conversationId, "assistant", note).catch(() => {});
+      emit({ type: "text", delta: `\n\n${closing}` });
     }
     emit({ type: "done", costCents: Math.round(total * 100) / 100 });
     return true;
-  });
-  if (!ran) emit({ type: "error", message: "Claude is still working on your last message in this chat." });
+  }
 }
 
 // ---- Proposals: applied only by a person ----

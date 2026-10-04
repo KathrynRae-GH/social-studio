@@ -34,6 +34,7 @@ export interface ConversationSummary {
 export interface ConversationView {
   id: string;
   working: boolean; // Claude is still answering the last message
+  interrupted: boolean; // the reply was cut off (the app restarted) before Claude answered
   title: string;
   items: ChatItem[];
   pieces: PieceView[];

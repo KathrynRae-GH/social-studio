@@ -22,6 +22,7 @@ services:
     buildCommand: npm ci --include=dev && npm run build
     startCommand: node server/src/index.ts
     healthCheckPath: /health
+    maxShutdownDelaySeconds: 300 # lets Claude finish replies in progress during an update
     envVars:
       - key: NODE_ENV
         value: production

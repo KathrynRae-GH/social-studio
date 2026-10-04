@@ -21,7 +21,18 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
   const [working, setWorking] = useState("");
   const [cost, setCost] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [interrupted, setInterrupted] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [, tick] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
+
+  // While Claude works, show how long it's been (big requests take minutes).
+  useEffect(() => {
+    if (!working) return;
+    const t = setInterval(() => tick((n) => n + 1), 15_000);
+    return () => clearInterval(t);
+  }, [working]);
+  const minutes = startedAt ? Math.floor((Date.now() - startedAt) / 60_000) : 0;
 
   useEffect(() => {
     api.claudeStatus().then(setStatus, (e: Error) => setError(e.message));
@@ -34,6 +45,7 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
   async function openChat(id: string) {
     setError("");
     setCost(null);
+    setInterrupted(false);
     if (!id) {
       setConversationId(null);
       setItems([]);
@@ -44,7 +56,9 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
       setConversationId(conversation.id);
       setItems(conversation.items);
       setPieces(Object.fromEntries(conversation.pieces.map((p) => [p.id, p])));
+      setInterrupted(conversation.interrupted);
       if (conversation.working) {
+        setStartedAt(Date.now());
         await followUntilDone(conversation.id);
         setWorking("");
       }
@@ -59,7 +73,7 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
         setConversationId(e.conversationId);
         break;
       case "text":
-        setWorking("");
+        setWorking("Writing…");
         setItems((list) => {
           const last = list[list.length - 1];
           if (last?.kind === "claude") return [...list.slice(0, -1), { kind: "claude", text: last.text + e.delta }];
@@ -93,8 +107,10 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
     setError("");
     setCost(null);
     setText("");
+    setInterrupted(false);
     setItems((list) => [...list, { kind: "user", text: t }]);
     setWorking("Thinking…");
+    setStartedAt(Date.now());
     let chatId = conversationId;
     let finished = false;
     try {
@@ -111,21 +127,28 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
     if (!finished && chatId) await followUntilDone(chatId);
     api.conversations().then((r) => setChats(r.conversations), () => {});
     setWorking("");
+    setStartedAt(null);
   }
 
+  // Follows a reply Claude is still writing on the server (the live connection
+  // dropped, or the chat was reopened), for up to 30 minutes.
   async function followUntilDone(id: string) {
-    setWorking("Claude is still finishing on the server…");
-    for (let i = 0; i < 120; i++) {
+    setWorking("Claude is still working on the server…");
+    for (let i = 0; i < 450; i++) {
       try {
         const { conversation } = await api.conversation(id);
         setItems(conversation.items);
         setPieces(Object.fromEntries(conversation.pieces.map((p) => [p.id, p])));
-        if (!conversation.working) return;
+        if (!conversation.working) {
+          setInterrupted(conversation.interrupted);
+          return;
+        }
       } catch {
         /* try again */
       }
       await new Promise((r) => setTimeout(r, 4000));
     }
+    setError("Claude is still working on this one. Reopen this chat in a few minutes to see the result.");
   }
 
   async function decide(p: ProposalView, decision: "apply" | "dismiss") {
@@ -198,7 +221,13 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
             </div>
           );
         })}
-        {working && <p className="muted small working">{working}</p>}
+        {working && <p className="muted small working">{working}{minutes > 0 ? ` (${minutes} min)` : ""}</p>}
+        {interrupted && !working && (
+          <div className="notice small">
+            <p>Claude was interrupted before it finished (Social Studio was updating). Anything it already made is in the Library.</p>
+            <button className="btn-secondary small" onClick={() => void send("Please continue where you left off.")}>Continue</button>
+          </div>
+        )}
         {cost !== null && <p className="muted small">This reply cost about {cost < 1 ? `${cost.toFixed(1)}¢` : `${Math.round(cost)}¢`} in Claude time.</p>}
         <ErrorNote message={error} />
         <div ref={bottom} />
