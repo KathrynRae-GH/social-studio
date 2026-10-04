@@ -15,6 +15,7 @@ import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../
 import { getPiece } from "../library.ts";
 import { addFeedback, feedbackFor } from "../feedback.ts";
 import { planCalendar } from "../planner.ts";
+import { approveStrategy, getStrategy, saveStrategy, startSuggestion } from "../strategy.ts";
 import { addComment, commentsFor, deleteComment, restoreVersion, sendEdits } from "../comments.ts";
 import type { AskEvent } from "../../../shared/ask.ts";
 
@@ -73,6 +74,12 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     await restoreVersion(db, viewer, req.params.id, Number(req.params.versionId));
     return { piece: await getPiece(db, viewer, req.params.id) };
   });
+
+  // ---- Strategy: posting times and content pillars ----
+  app.get("/api/strategy", async (req) => ({ strategy: await getStrategy(deps.ask, await viewerFrom(req)) }));
+  app.put<{ Body: Body }>("/api/strategy", async (req) => ({ strategy: await saveStrategy(deps.ask, await viewerFrom(req), req.body ?? {}) }));
+  app.post("/api/strategy/approve", async (req) => ({ strategy: await approveStrategy(deps.ask, await viewerFrom(req)) }));
+  app.post("/api/strategy/suggest", async (req) => ({ strategy: await startSuggestion(deps.ask, await viewerFrom(req)) }));
 
   // ---- Plan my calendar (Claude places approved posts) ----
   app.post<{ Body: Body }>("/api/calendar/plan", async (req) => planCalendar(deps.ask, await viewerFrom(req), req.body ?? {}));

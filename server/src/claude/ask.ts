@@ -15,6 +15,8 @@ import { assetDetail, inspirationFor, ownAsset, tagAsset, usableInDesign } from 
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
 import { recentVerdicts } from "../feedback.ts";
+import { approvedStrategy, pillarMix, strategyText } from "../strategy.ts";
+import type { Pillar } from "../../../shared/strategy.ts";
 import { addedAt, isNewProduct, liveProducts } from "../store/sync.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
@@ -173,7 +175,7 @@ Dos and don'ts: ${style.dosDonts || "(none yet)"}
 Inspiration board: the shop's loved posts are attached at the start of each chat (if it has any). Study them closely: their layouts, graphic habits, type treatments, color use and energy. Design in that spirit for this shop's own content. Never copy another brand's posts, logos or text, and never put an inspiration image into a design.`;
 }
 
-function systemPrompt(style: StyleSetView, shopName: string): string {
+function systemPrompt(style: StyleSetView, shopName: string, strategy = ""): string {
   return `You are Claude, working inside Social Studio, a social media studio built into Boutiqly for small shops. You help the shop's owner and team plan, design and write their social media: posts, carousels, Stories, Story sets, text posts, pins, Google updates, captions for every channel, alt text, ideas and the posting plan. You're a strong designer and a warm, specific writer. Keep replies short and useful; show, don't lecture.
 
 ${RULES}
@@ -192,7 +194,7 @@ ${channelGuide()}
 
 Captions: write one per channel the piece is for, within each channel's limit, plus alt text describing the image for screen readers. Threads, Bluesky and X are short and conversational; LinkedIn is plainer; Instagram can be longer with a few relevant hashtags at the end.
 
-${styleText(style, shopName)}`;
+${styleText(style, shopName)}${strategy ? `\n\n## This shop's strategy (approved by the owner)\n${strategy}` : ""}`;
 }
 
 // ---- Tools ----
@@ -259,6 +261,7 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         kind: { type: "string", enum: KINDS },
         title: { type: "string", description: "Short internal name, like 'Fall sale carousel'." },
         link: { type: "string", description: "The product or shop page this post points to, exactly as list_products gave it. Saved with the post and used as its link where the channel takes one." },
+        pillar: { type: "string", description: "The content pillar id this piece belongs to (from the shop's strategy), if it has pillars." },
         design: {
           type: "object",
           properties: {
@@ -328,6 +331,7 @@ const DesignInput = z.object({
   kind: z.enum(KINDS as [Kind, ...Kind[]]),
   title: z.string().max(200),
   link: z.string().max(2048).optional(),
+  pillar: z.string().max(60).optional(),
   design: z
     .object({
       size: z.string(),
@@ -359,6 +363,7 @@ interface ToolOutcome {
 }
 
 interface RunCtx {
+  pillars?: Pillar[]; // the approved strategy's content pillars
   drafts: Map<string, number>; // design_piece renders per piece in this reply
   deps: AskDeps;
   viewer: Viewer;
@@ -368,6 +373,7 @@ interface RunCtx {
 }
 
 const isUuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
+const strategyPillars = (ctx: RunCtx): Pillar[] => ctx.pillars ?? [];
 
 async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<ToolOutcome> {
   const { deps, brand, viewer } = ctx;
@@ -398,6 +404,7 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
             frame_asset_ids: r.assetIds,
             has_design: !!r.design,
             approved_for: r.approvedAt ? r.approvedChannels : null,
+            pillar: r.pillar ?? undefined,
             captions: Object.fromEntries(caps.filter((c) => c.pieceId === r.id).map((c) => [c.channel, c.text.slice(0, 300)])),
             on_calendar: entries
               .filter((e) => e.pieceId === r.id)
@@ -572,6 +579,12 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
       }
 
       const capNotes: string[] = [];
+      if (input.pillar !== undefined) {
+        if (strategyPillars(ctx).some((p) => p.id === input.pillar)) await db.update(pieces).set({ pillar: input.pillar }).where(eq(pieces.id, pieceId));
+        else capNotes.push(`"${input.pillar}" isn't one of the shop's pillars, so it wasn't saved. Use one of: ${strategyPillars(ctx).map((p) => p.id).join(", ") || "(none yet)"}.`);
+      } else if (!input.piece_id && strategyPillars(ctx).length) {
+        capNotes.push(`Tag this piece with a content pillar: call design_piece with piece_id ${pieceId} and pillar (one of ${strategyPillars(ctx).map((p) => p.id).join(", ")}).`);
+      }
       if (input.link !== undefined) {
         const link = input.link.trim();
         const [known] = link ? await db.select({ id: products.id }).from(products).where(and(eq(products.brandId, brand.id), eq(products.url, link))).limit(1) : [];
@@ -788,7 +801,7 @@ export function activeAskRuns(): number {
 }
 
 // Hidden notes added to the shop's message for Claude (never shown as the owner's words).
-const HIDDEN_NOTES = ["The shop's inspiration board", "The owner's verdicts on recent posts", "The shop's most recent designs"];
+const HIDDEN_NOTES = ["The shop's inspiration board", "The owner's verdicts on recent posts", "The shop's most recent designs", "Content pillar mix"];
 
 const INTERRUPTED_NOTE = "(I was interrupted before I could finish that one.)";
 
@@ -845,10 +858,11 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
 
   async function runAsk(): Promise<boolean> {
     const style = await styleForDesign(deps.db, brand);
+    const strategy = await approvedStrategy(deps.db, brand.id);
     const tz = brandTimezone(brand);
     const now = utcToZoned(new Date(), tz);
     const system: Anthropic.Beta.BetaTextBlockParam[] = [
-      { type: "text", text: systemPrompt(style, brand.name ?? ""), cache_control: { type: "ephemeral" } },
+      { type: "text", text: systemPrompt(style, brand.name ?? "", strategyText(strategy)), cache_control: { type: "ephemeral" } },
     ];
     const stored = await deps.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversationId)).orderBy(asc(conversationMessages.id));
     const history: MessageParam[] = stored.map((m) => ({ role: m.role, content: m.content as MessageParam["content"] }));
@@ -887,11 +901,19 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
         if (u) userContent.push({ type: "image", source: { type: "url", url: u.url } });
       }
     }
+    if (strategy?.pillars.length) {
+      const mix = await pillarMix(deps.db, brand.id);
+      const total = Object.values(mix).reduce((n, x) => n + x, 0) || 1;
+      userContent.push({
+        type: "text",
+        text: `Content pillar mix over the last 30 days (posts, share vs target). Lean new pieces toward pillars below target unless the owner asks for something specific:\n${strategy.pillars.map((p) => `- ${p.id}: ${mix[p.id] ?? 0} (${Math.round(((mix[p.id] ?? 0) / total) * 100)}% vs ${p.share}%)`).join("\n")}`,
+      });
+    }
     userContent.push({ type: "text", text: `[${now.date} ${now.time}, ${tz}; from ${viewer.ctx.name || "the team"}]\n${text}` });
     history.push({ role: "user", content: userContent });
     await append(deps.db, conversationId, "user", userContent);
 
-    const runCtx: RunCtx = { drafts: new Map(), deps, viewer, brand, conversationId, emit };
+    const runCtx: RunCtx = { pillars: strategy?.pillars, drafts: new Map(), deps, viewer, brand, conversationId, emit };
     let total = 0;
     let closing: string | null = null; // a note for the chat when Claude stops without a final reply
     try {
