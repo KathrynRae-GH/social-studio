@@ -1,7 +1,7 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { StoreView } from "../../shared/store.ts";
 import type { Me, TeamEntry } from "../../shared/roles.ts";
-import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { PlanResult, SendResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
 import type { CustomFont, StyleColor, StyleSetView } from "../../shared/design.ts";
 
@@ -120,8 +120,12 @@ export const api = {
   move: (id: string, date: string, time: string) =>
     call<{ entry: EntryView }>(`/api/calendar/${id}`, { method: "PATCH", body: JSON.stringify({ date, time }) }),
   unschedule: (id: string) => call<{ ok: true }>(`/api/calendar/${id}`, { method: "DELETE" }),
-  approve: (id: string) => call<ApproveResult>(`/api/calendar/${id}/approve`, { method: "POST", body: "{}" }),
-  sendDraft: (id: string) => call<DraftResult>(`/api/calendar/${id}/draft`, { method: "POST", body: "{}" }),
+  lock: (id: string, locked: boolean) => call<{ entry: EntryView }>(`/api/calendar/${id}/lock`, { method: "POST", body: JSON.stringify({ locked }) }),
+  lockAll: () => call<{ locked: number }>("/api/calendar/lock-all", { method: "POST", body: "{}" }),
+  sendLocked: () => call<SendResult>("/api/calendar/send", { method: "POST", body: "{}" }),
+  plan: (weeks: number, more: boolean) => call<PlanResult>("/api/calendar/plan", { method: "POST", body: JSON.stringify({ weeks, continue: more }) }),
+  approvePiece: (id: string, channels: string[]) => call<{ piece: PieceView }>(`/api/pieces/${id}/approve`, { method: "POST", body: JSON.stringify({ channels }) }),
+  unapprovePiece: (id: string) => call<{ piece: PieceView }>(`/api/pieces/${id}/approve`, { method: "DELETE" }),
   markPosted: (id: string) => call<{ entry: EntryView }>(`/api/calendar/${id}/posted`, { method: "POST", body: "{}" }),
   accounts: () => call<{ accounts: AccountView[] | null }>("/api/accounts"),
   setLivePosting: (on: boolean) =>

@@ -54,7 +54,7 @@ Full detail in `docs/scope.md` and `docs/decisions.md`.
 - **Claude in the app runs on Claude Opus 5.5 (`claude-opus-5-5`) or newer** for all work: captions, tagging, design, Ask Claude. The model is a config value, never hard-coded. Ask Claude gets its full capabilities: strong design, and no limit on what kinds of things it can make.
 - **Access:** account owners plus team members they designate (both can approve); Boutiqly's agency users see and do everything on every brand for now, with every change logged under their name. Everyone else in the sub-account sees a request-access screen.
 - **Pricing:** no monthly fee; Social Studio is part of every Boutiqly plan. Every Claude job is metered and billed to the sub-account's Boutiqly wallet as Studio credits at 2x Claude cost (1 credit = 1 cent of Claude cost). Each brand chooses a monthly limit or unlimited; Claude work pauses at the limit. Boutiqly covers the first testers' credits.
-- **Statuses:** Suggested → Approved → Scheduled → Posted ("Locked" in the prototype is now "Approved").
+- **Statuses:** Suggested → Approved (in the Library, for the networks the owner ticks) → On calendar (placed by "Plan my calendar" or by hand) → Locked (can't move) → Scheduled (sent to Boutiqly's social planner with one click) → Posted. Changed Oct 4, 2026 at Katy's request.
 - **Testers:** Katy's brands first (Make Space, then Boutiqly), then Bella and Brawn and Blue Bare. Test as soon as it's ready; roll out as fast as testing allows.
 
 ## Architecture (starting point; confirm or change in session 1)

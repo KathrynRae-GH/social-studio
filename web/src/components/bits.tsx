@@ -1,10 +1,10 @@
 import type { AssetView } from "../../../shared/content.ts";
 import { STATUS_LABELS, channel, type EntryStatus } from "../../../shared/channels.ts";
 
-export function StatusChip({ status, dryRun }: { status: EntryStatus; dryRun?: boolean }) {
+export function StatusChip({ status, locked }: { status: EntryStatus; locked?: boolean }) {
   return (
     <span className={`status-chip status-${status}`}>
-      {dryRun ? "Approved (posting off)" : STATUS_LABELS[status]}
+      {locked && status === "approved" ? "🔒 Locked" : STATUS_LABELS[status]}
     </span>
   );
 }

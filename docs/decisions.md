@@ -189,3 +189,23 @@ Claude (technical):
 - The main photo of up to 40 products is copied per read, newest first, with a cap of 300 per shop. When someone taps Connect or Refresh with Claude on, Claude looks at the new photos right away (about a cent each). Photos copied by the daily refresh are looked at the next time Claude needs them.
 - Claude's new `list_products` tool returns names, links, type, description, new and in-stock flags, and the photo's asset id if it's usable. No prices.
 - `design_piece` takes a `link`. It's saved only if it's a product link from the list or a page on the shop's own store.
+
+## Oct 4, 2026: approve in the Library, plan, lock, send (Katy)
+
+Katy:
+- The large preview shows the captions once, on the right, where they can be edited. Approval happens right there.
+- Owners tick the networks a post goes to when they approve it. Claude never picks networks.
+- **Plan my calendar:** one click, and Claude puts every approved post on the calendar in a sensible order. The owner picks how far ahead: 4, 8 or 12 weeks. "Plan 4 more weeks after that" continues from the end of the current plan. Posts already on the calendar stay where they are.
+- **Lock:** locked posts can't be moved, by anyone or by Claude's planning. There's a "Lock all planned" button too.
+- **Send:** one click sends every locked post to Boutiqly's social planner as scheduled, and marks it Scheduled. Nothing goes twice without a person acting.
+- While live posting is off for a shop, Send makes **drafts** in Boutiqly's social planner instead (drafts never post). Each draft goes once. Once live posting is on, the same button schedules for real.
+- Build order: store connection, then this, then comments-to-edits.
+
+Claude (technical):
+- `pieces` gets `approved_at`, `approved_by`, `approved_by_name` and `approved_channels`. `calendar_entries` gets `locked_at` and `locked_by` (migration `0010`).
+- Approving checks every ticked network the way sending will (photo present, caption length, and so on) and marks those captions final. Taking a network off removes its calendar spot unless it's locked or sent. Undo approval works only while nothing is locked or sent.
+- Only approved posts go on the calendar, and only to approved networks. New entries start as `approved`, shown as "On calendar". The old per-entry Approve and the separate "Send as a draft" button are gone. Entries left over from before still show as Suggested, with a note to approve the post in the Library.
+- Send runs under a per-shop lock. Planner post ids are saved as they come back, so a half-sent Story set only resends the missing frames.
+- Plan my calendar is one Claude call (effort medium, structured output), metered as `plan_calendar`. It sees the approved post-and-network pairs not yet on the calendar, the last two weeks and everything ahead, the shop's notes and time zone. Every spot it returns is checked: it must be inside the window, at least 15 minutes from now, and an approved piece and network. Anything it doesn't place is listed with a reason.
+- Claude can't change an approved post, and Ask Claude's "add to calendar" proposals only work for approved posts and their networks.
+- Known gap: if a post was sent as a draft and is then unlocked and moved, the old draft stays in Boutiqly's social planner (delete it there). Sending a post that already went as a draft, once live posting is on, also leaves the draft there.

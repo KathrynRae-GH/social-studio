@@ -30,7 +30,7 @@ v1 carries over everything the Make Space prototype does and adds what it can't:
 | Onboarding | Brand capture from the website, linked social accounts and uploads, then a brand board to approve, then the shop questions, style set and first two weeks of posts | New: the social-studio-setup skill, built into the tab, with brand capture added |
 | Brand | Brand board, brand doc, style set with samples, people rules, channels and targets, Team list, all editable | New screen; today these live in project docs |
 | Library | Posts, carousels, Reels, Stories, Story sets with highlight covers, text posts, pins, Shorts, video titles and thumbnails, Google updates. Captions per channel marked Final or Draft, plus alt text | Adds the formats for YouTube, Pinterest, Google, Bluesky, X and other channels |
-| Calendar | Suggested, Approved, Scheduled, Posted. Six-week plan with per-channel targets, notices (including accounts that need reconnecting), Instagram grid preview, Month and List views | "Locked" becomes "Approved", since approving is now a role |
+| Calendar | Suggested → Approved (in the Library, per ticked network) → On calendar → Locked → Scheduled → Posted. "Plan my calendar": Claude places approved posts over 4, 8 or 12 weeks, then 4 more at a time; Lock all; one-click Send locked to Boutiqly (drafts while live posting is off). Changed Oct 4, 2026. Six-week plan with per-channel targets, notices (including accounts that need reconnecting), Instagram grid preview, Month and List views | "Locked" becomes "Approved", since approving is now a role |
 | Posting | Approving a post uploads its media to Boutiqly media storage and creates the post in Boutiqly's social planner; channels beyond Boutiqly get a ready-to-post pack | New: no weekly packs to drag in |
 | Content engine | Renders posts, carousels, Stories, Reels and every channel's sizes, from the brand's style set or from any design Ask Claude makes, on a background worker; preview in the tab; "change this" re-renders | Moves from Claude's workspace to the server, and renders free-form designs, not only templates |
 | Assets | Upload, or pick from Boutiqly media storage. Claude tags each file and every file carries a people rule | Adds picking from Boutiqly media storage |
@@ -208,6 +208,12 @@ Full Reels plus custom styles for every brand roughly doubles the build before a
 4. **The phone app is unconfirmed.** Boutiqly users are on the LeadConnector app today, so whether the tab shows on phones depends on what that app allows, and nothing public confirms it shows custom tabs. Reels and Stories already go out from the phone through app pings, but approving and uploading on the phone depend on it. Test it on day one in Make Space's sub-account; the fallback, a phone-friendly link with its own sign-in, is extra work.
 5. **Claude costs grow with use.** Meter every brand from day one and test wallet billing before any client connects.
 6. **Custom styles cost people time** only when a brand wants something the engine can't do. Building each brand's styles as its own code would make every brand a separate thing to maintain; the shared engine avoids that.
+
+## Added Oct 4, 2026 (Katy)
+
+- **Online store:** owners connect their store by address on the Brand screen (Shopify, Square and most others). Claude features real products and links to them; product photos are copied into Assets. Posts never mention prices.
+- **Approve, plan, lock, send:** approve posts in the Library for the ticked networks; Claude plans the calendar; owners lock dates; one click sends locked posts to Boutiqly's social planner. Nothing is sent twice.
+- **Coming next:** comments on a post that Claude turns into edits (approved posts go back to Suggested; the earlier version is kept with a Go back).
 
 ## Still open
 

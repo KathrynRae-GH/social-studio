@@ -58,7 +58,7 @@ async function piecesWithDetails(db: Db, brand: Brand, rows: (typeof pieces.$inf
       : Promise.resolve([]),
     db.select().from(captions).where(inArray(captions.pieceId, pieceIds)),
     db
-      .select({ pieceId: calendarEntries.pieceId, channel: calendarEntries.channel, status: calendarEntries.status })
+      .select({ pieceId: calendarEntries.pieceId, channel: calendarEntries.channel, status: calendarEntries.status, lockedAt: calendarEntries.lockedAt })
       .from(calendarEntries)
       .where(and(eq(calendarEntries.brandId, brand.id), inArray(calendarEntries.pieceId, pieceIds))),
   ]);
@@ -75,7 +75,8 @@ async function piecesWithDetails(db: Db, brand: Brand, rows: (typeof pieces.$inf
         .filter((c) => c.pieceId === p.id)
         .map((c): [string, CaptionView] => [c.channel, { text: c.text, altText: c.altText, status: c.status }]),
     ),
-    onCalendar: entryRows.filter((e) => e.pieceId === p.id).map((e) => ({ channel: e.channel, status: e.status })),
+    onCalendar: entryRows.filter((e) => e.pieceId === p.id).map((e) => ({ channel: e.channel, status: e.status, locked: !!e.lockedAt })),
+    approval: p.approvedAt ? { at: p.approvedAt.toISOString(), by: p.approvedByName, channels: p.approvedChannels } : null,
     updatedAt: p.updatedAt.toISOString(),
     source: p.source,
     design: p.design ?? null,

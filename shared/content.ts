@@ -49,7 +49,9 @@ export interface PieceView {
   archived: boolean;
   assets: AssetView[];
   captions: Record<string, CaptionView>; // by channel id
-  onCalendar: { channel: string; status: EntryStatus }[];
+  onCalendar: { channel: string; status: EntryStatus; locked: boolean }[];
+  // Approved in the Library for these networks (captions there are final).
+  approval: { at: string; by: string; channels: string[] } | null;
   updatedAt: string;
   source: "owner" | "claude";
   design: Design | null;
@@ -65,6 +67,7 @@ export interface EntryView {
   time: string; // shop's local time, HH:MM
   scheduledAt: string; // ISO, UTC
   status: EntryStatus;
+  locked: boolean; // locked in place: can't be moved, ready to send
   route: Route;
   preview: AssetView | null;
   caption: string;
@@ -89,6 +92,7 @@ export interface CalendarData {
   timezone: string;
   livePosting: boolean;
   entries: EntryView[];
+  waiting: number; // approved post-and-network pairs not on the calendar yet
   accounts: AccountView[] | null; // null when Boutiqly couldn't be reached
   notices: string[];
 }
@@ -102,12 +106,22 @@ export interface IdeaView {
   pieceId: string | null;
 }
 
-export interface DraftResult {
-  entry: EntryView;
-  alreadySent: boolean;
+// What "Send to Boutiqly" did with the locked entries.
+export interface SendResult {
+  live: boolean; // live posting on: scheduled posts; off: drafts
+  scheduled: number;
+  drafted: number;
+  alreadySent: number; // drafts sent before (live posting off)
+  byHand: number; // packs and shares, posted by hand
+  problems: { entryId: string; message: string }[];
 }
 
-export interface ApproveResult {
-  entry: EntryView;
-  dryRun?: unknown[]; // what would have been sent, when live posting is off
+// What "Plan my calendar" did.
+export interface PlanResult {
+  placed: number;
+  from: string; // shop's local dates
+  to: string;
+  notPlaced: { pieceId: string; title: string; reason: string }[];
+  note: string; // Claude's one-line summary of the plan
+  costCents: number;
 }
