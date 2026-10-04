@@ -147,3 +147,13 @@ Claude (technical):
 - Each message to Claude lists the shop's 6 most recent designs (layout and motifs) and shows the first frame of the latest 3.
 - A new piece can't reuse the layout family of the last 3 designs, unless Claude says the owner asked for it.
 - After each save, Claude is told which channels still lack a caption, and is asked to fill them before it finishes.
+
+## Oct 4, 2026: each post switches kind
+
+Katy:
+- A new post shouldn't look like the previous one unless she asks. For example, after a graphics-and-text post comes a full-bleed photo post.
+
+Claude (technical):
+- Layouts are grouped into three kinds: mostly graphics and type; one big photo; several photos.
+- A new post must be a different kind from the last one, unless the owner asked for the same. If the shop has no usable photos, graphics-led posts are still allowed back to back.
+- The existing rule that a post can't reuse the layout family of the last three still applies.

@@ -75,6 +75,22 @@ export const LAYOUTS: Record<string, string> = {
   "this-or-that": "Two halves compared: this or that, before and after, day and night",
 };
 
+// The three kinds of post. Each new post switches kind from the one before
+// (graphics-led → photo-led → several photos…), unless the owner asks.
+export const LAYOUT_KINDS: Record<string, { label: string; layouts: string[] }> = {
+  graphic: {
+    label: "mostly graphics and type",
+    layouts: ["type-poster", "quote-card", "big-number", "list", "sticker-sheet", "ticket-or-tag", "pattern", "minimal", "speech-bubble"],
+  },
+  photo: { label: "one big photo leads", layouts: ["full-bleed-photo", "split-screen", "arch-window", "magazine-cover"] },
+  photos: { label: "several photos", layouts: ["photo-collage", "product-grid", "polaroid", "this-or-that"] },
+};
+
+export function layoutKind(layout: string | undefined): string | null {
+  if (!layout) return null;
+  return Object.entries(LAYOUT_KINDS).find(([, k]) => k.layouts.includes(layout))?.[0] ?? null;
+}
+
 export interface Design {
   size: DesignSize;
   layout?: string; // one of LAYOUTS

@@ -553,11 +553,25 @@ describe("variety", () => {
     expect(blocked.content).toContain('"First" already used the type-poster layout');
     // The next message describes recent designs, with their layout and motifs.
     const sent = calls.at(-1)!.messages.at(-3)!.content as { type: string; text?: string }[];
-    expect(sent.find((b) => b.text?.includes("most recent designs"))!.text).toContain('"First" (post): layout type-poster; motifs: starburst top right');
+    expect(sent.find((b) => b.text?.includes("most recent designs"))!.text).toContain('"First" (post): layout type-poster (mostly graphics and type); motifs: starburst top right');
 
     script = [make("Third", "type-poster", { owner_asked_for_this_layout: true }), say("ok")];
     await askRaw("Same layout as the last one please");
     expect((await t.pool.query("SELECT title FROM pieces ORDER BY created_at")).rows.map((r) => r.title)).toEqual(["First", "Third"]);
+  });
+
+  it("switches the kind of post each time when the shop has photos", async () => {
+    const photo = await upload();
+    await markTagged(photo);
+    await claudeOn();
+    script = [make("Poster", "type-poster"), say("ok"), make("Quote", "quote-card"), say("ok"), make("Photo", "full-bleed-photo", { frames: [{ html: `<img class="photo" src="asset:${photo}">` }] }), say("ok")];
+    await askRaw("A post");
+    await askRaw("Another");
+    const blocked = (calls[3]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
+    expect(blocked.is_error).toBe(true);
+    expect(blocked.content).toContain('The last post ("Poster") was mostly graphics and type');
+    await askRaw("And another");
+    expect((await t.pool.query("SELECT title FROM pieces ORDER BY created_at")).rows.map((r) => r.title)).toEqual(["Poster", "Photo"]);
   });
 
   it("asks for captions on every channel the post can go to", async () => {
