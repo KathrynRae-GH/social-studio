@@ -42,7 +42,7 @@ export function Shell({ me }: { me: Me }) {
 
       <main className="screen">
         {screen === "Calendar" && <CalendarScreen me={me} hasOwner={hasOwner} onOpenTeam={() => setScreen("Brand")} />}
-        {screen === "Library" && <LibraryScreen timezone={timezone} />}
+        {screen === "Library" && <LibraryScreen timezone={timezone} shopName={me.brand?.name ?? ""} />}
         {screen === "Assets" && <AssetsScreen />}
         {screen === "Ideas" && <IdeasScreen />}
         {screen === "Brand" && (

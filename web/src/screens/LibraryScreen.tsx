@@ -7,7 +7,7 @@ import { PieceEditor } from "./PieceEditor.tsx";
 
 const FILTERS: (Kind | "all")[] = ["all", "post", "carousel", "story", "story_set", "reel", "text", "short", "pin", "google_update"];
 
-export function LibraryScreen({ timezone }: { timezone: string }) {
+export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; shopName?: string }) {
   const [pieces, setPieces] = useState<PieceView[] | null>(null);
   const [filter, setFilter] = useState<Kind | "all">("all");
   const [editing, setEditing] = useState<PieceView | null | "new">(null);
@@ -77,6 +77,7 @@ export function LibraryScreen({ timezone }: { timezone: string }) {
         <PieceEditor
           piece={editing === "new" ? null : editing}
           timezone={timezone}
+          shopName={shopName}
           onClose={() => { setEditing(null); void load(); }}
           onSaved={(saved) => setPieces((ps) => [saved, ...(ps ?? []).filter((p) => p.id !== saved.id)])}
         />
