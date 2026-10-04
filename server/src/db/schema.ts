@@ -2,6 +2,7 @@
 // The migrations are the source of truth; keep this file in step with them.
 import { pgTable, text, uuid, timestamp, boolean, bigserial, bigint, integer, jsonb, numeric, primaryKey } from "drizzle-orm/pg-core";
 import type { Design, SensitiveFlag, StyleColor } from "../../../shared/design.ts";
+import type { ChannelTimes, Pillar, StrategyLink } from "../../../shared/strategy.ts";
 
 export const brands = pgTable("brands", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -116,6 +117,7 @@ export const pieces = pgTable("pieces", {
   approvedBy: text("approved_by"),
   approvedByName: text("approved_by_name").notNull().default(""),
   approvedChannels: text("approved_channels").array().notNull().default([]),
+  pillar: text("pillar"),
   editingStartedAt: ts("editing_started_at"),
   editReply: text("edit_reply").notNull().default(""),
   editError: text("edit_error"),
@@ -353,4 +355,20 @@ export const pieceVersions = pgTable("piece_versions", {
   createdBy: text("created_by").notNull(),
   createdByName: text("created_by_name").notNull().default(""),
   createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const strategies = pgTable("strategies", {
+  brandId: uuid("brand_id").primaryKey(),
+  links: jsonb("links").$type<StrategyLink[]>().notNull().default([]),
+  summary: text("summary").notNull().default(""),
+  times: jsonb("times").$type<Record<string, ChannelTimes>>().notNull().default({}),
+  pillars: jsonb("pillars").$type<Pillar[]>().notNull().default([]),
+  status: text("status", { enum: ["draft", "approved"] }).notNull().default("draft"),
+  approvedBy: text("approved_by"),
+  approvedAt: ts("approved_at"),
+  suggestingStartedAt: ts("suggesting_started_at"),
+  suggestError: text("suggest_error"),
+  suggestedAt: ts("suggested_at"),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
 });

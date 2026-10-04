@@ -80,6 +80,8 @@ async function piecesWithDetails(db: Db, brand: Brand, rows: (typeof pieces.$inf
     updatedAt: p.updatedAt.toISOString(),
     source: p.source,
     design: p.design ?? null,
+    pillar: p.pillar ?? null,
+    createdAt: p.createdAt.toISOString(),
   }));
 }
 
