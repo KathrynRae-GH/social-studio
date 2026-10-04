@@ -7,11 +7,11 @@ import { CalendarScreen } from "../screens/CalendarScreen.tsx";
 import { LibraryScreen } from "../screens/LibraryScreen.tsx";
 import { IdeasScreen } from "../screens/IdeasScreen.tsx";
 
-const SCREENS = ["Calendar", "Library", "Assets", "Ideas", "Brand"] as const;
+const SCREENS = ["Library", "Calendar", "Assets", "Ideas", "Brand"] as const;
 type Screen = (typeof SCREENS)[number];
 
 export function Shell({ me }: { me: Me }) {
-  const [screen, setScreen] = useState<Screen>("Calendar");
+  const [screen, setScreen] = useState<Screen>("Library");
   const [askOpen, setAskOpen] = useState(false);
   const [hasOwner, setHasOwner] = useState(!!me.brand?.hasOwner);
   const timezone = me.brand?.timezone ?? "America/Chicago";
