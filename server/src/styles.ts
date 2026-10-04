@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "./db/pool.ts";
 import { assets, styleSets } from "./db/schema.ts";
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "./brands.ts";
-import { FALLBACK_STYLE, validColor, validFont, type StyleColor, type StyleSetView } from "../../shared/design.ts";
+import { FALLBACK_STYLE, validColor, MAX_PRIMARY, validFont, type StyleColor, type StyleSetView } from "../../shared/design.ts";
 import { fontsFor } from "./fonts.ts";
 
 type Row = typeof styleSets.$inferSelect;
@@ -70,9 +70,12 @@ export async function saveStyleSet(db: Db, viewer: Viewer, input: StyleInput): P
   };
   if (input.colors !== undefined) {
     if (!Array.isArray(input.colors) || input.colors.length > 8 || !input.colors.every(validColor)) {
-      throw new AccessError("Colors need a name, a hex code like #1d3c34 and a role. Up to 8.", 400);
+      throw new AccessError("Colors need a name and a hex code like #1d3c34. Up to 8.", 400);
     }
-    next.colors = (input.colors as StyleColor[]).map((c) => ({ name: c.name.trim(), hex: c.hex.toLowerCase(), role: c.role }));
+    if ((input.colors as StyleColor[]).filter((c) => c.primary).length > MAX_PRIMARY) {
+      throw new AccessError(`Mark up to ${MAX_PRIMARY} colors as primary.`, 400);
+    }
+    next.colors = (input.colors as StyleColor[]).map((c) => ({ name: c.name.trim(), hex: c.hex.toLowerCase(), ...(c.primary ? { primary: true } : {}) }));
   }
   for (const key of ["headingFont", "bodyFont"] as const) {
     if (input[key] === undefined) continue;

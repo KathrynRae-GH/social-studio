@@ -2,6 +2,22 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 4, 2026 (later): store, approve-plan-lock-send, comments, colors
+
+- Done (each merged by Claude once checks passed, as Katy asked):
+  - Love it / not this, plus the side-by-side preview, with no black space (PR #14). "Boutiqly community" removed.
+  - **Online store** on Brand: connect by address (Shopify, Square and most others). Products refresh daily and new arrivals are flagged. Product photos go into Assets. Claude features real products and links to them, never prices (PR #15).
+  - **Approve in the Library** for ticked networks. On the Calendar: **Plan my calendar** (Claude, over 4, 8 or 12 weeks, then 4 more), **Lock** or Lock all, and **Send locked to Boutiqly**: scheduled when live posting is on, drafts when it's off, never twice (PR #16).
+  - The Library tab comes first and the Calendar opens on Month (PR #17).
+  - **Comments for Claude**, which become edits. The post goes back to Suggested, and Go back restores an earlier version. **Every color for everything**, with good contrast, and up to 3 primary colors. Calendar views go Month, List, Instagram grid, then Schedule it. The white bar on Library cards is fixed (PR #18).
+  - 132 server tests. Each flow checked in a browser with a stand-in for Claude and Boutiqly.
+- Next: Katy tests on the live app. Connect a store (Square is the first real test of the non-Shopify reader). Approve a few posts, then Plan, Lock and Send (drafts while live posting is off). Leave comments and send them. Tick primary colors and re-approve the look.
+- Waiting on Katy: her batch of small edits; whether to try a stronger model for design (cost decision); where her "new plan" brand document should live. Still waiting from before: the test Instagram for real posts, and the two Milestone 1 checks.
+- Risks:
+  - The Square reader hasn't seen a real Square store yet; this sandbox can't reach the web.
+  - Drafts already sent stay in Boutiqly's social planner when a post is moved, or later scheduled for real; delete them there.
+  - Old calendar entries from before approvals moved to the Library show as Suggested until the post is approved again.
+
 ## Oct 4, 2026: variety and every-network captions
 
 - Katy: designs are now much more on brand, but too alike. She also wants copy for every network by default.

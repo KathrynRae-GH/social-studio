@@ -209,3 +209,32 @@ Claude (technical):
 - Plan my calendar is one Claude call (effort medium, structured output), metered as `plan_calendar`. It sees the approved post-and-network pairs not yet on the calendar, the last two weeks and everything ahead, the shop's notes and time zone. Every spot it returns is checked: it must be inside the window, at least 15 minutes from now, and an approved piece and network. Anything it doesn't place is listed with a reason.
 - Claude can't change an approved post, and Ask Claude's "add to calendar" proposals only work for approved posts and their networks.
 - Known gap: if a post was sent as a draft and is then unlocked and moved, the old draft stays in Boutiqly's social planner (delete it there). Sending a post that already went as a draft, once live posting is on, also leaves the draft there.
+
+## Oct 4, 2026: Library tab first; Calendar opens on Month (Katy)
+
+- Tabs go Library, Calendar, Assets, Ideas, Brand, and Social Studio opens on the Library. The Calendar opens on its Month view.
+
+## Oct 4, 2026: comments on a post become Claude's edits (Katy)
+
+Katy:
+- Anyone on the team leaves comments on a post. "Send N comments to Claude" sends them all at once (one revision per batch).
+- The edited post comes back as **Suggested**: its approval is cleared and its calendar spots are removed, even if they were locked. It needs approving again.
+- The earlier version is kept. **Go back** restores it, and the current one is kept too.
+
+Claude (technical):
+- Tables `piece_comments` and `piece_versions`, plus `pieces.editing_started_at`, `edit_reply` and `edit_error` (migration `0011`).
+- The edit runs in the background as an Ask Claude conversation (so it shows in the person's Ask Claude history). Claude is told to change only what the comments ask for, keep the layout unless told otherwise, and say in a sentence what it changed. The tab checks every 4 seconds and shows the new version when it's done.
+- A post already scheduled or posted in Boutiqly's social planner can't be edited here: delete it there first. If Claude fails, the comments stay open to send again.
+- One edit per post at a time. An edit that never finished (a server restart) stops blocking after 20 minutes.
+
+## Oct 4, 2026: every color for everything, with up to 3 primary (Katy)
+
+Katy:
+- Colors no longer have jobs (background, text, accent, highlight). Claude uses every color in all kinds of mixes, always with good contrast. Owners tick up to 3 **primary** colors, the ones that lead most posts.
+- The Calendar views go Month (opens first), List, Instagram grid, then **Schedule it** (what used to be "This week").
+
+Claude (technical):
+- `StyleColor` loses `role` (old saved sets keep it, but it's ignored) and gains `primary`. The server refuses more than 3 primaries.
+- The engine still sets a page color and a text color (the lightest color, and the most readable color on it, or near-black/white if none reads well). `--brand-accent` and `--brand-highlight` now come from the primaries first, so older designs keep rendering. New variables `--brand-primary-1..3`.
+- Claude's instructions list every color (with PRIMARY marked) and a readable-pairs table worked out with WCAG contrast: 4.5:1 for body text, 3:1 for big headings, with white and black included. Claude is told every color can be used anywhere, to vary which color leads, to give a primary a prominent place in every post, and to put text only on readable pairs.
+- Ticking primaries changes the look, so it needs approving again, like any other change to the look.

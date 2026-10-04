@@ -4,6 +4,7 @@ import { KIND_LABELS, ROUTE_LABELS, channelsFor, type Kind } from "../../../shar
 import { api } from "../boutiqly.ts";
 import { PostPreview } from "../components/PostPreview.tsx";
 import { Verdict } from "../components/Verdict.tsx";
+import { Comments } from "../components/Comments.tsx";
 import { ErrorNote, Thumb, addDays, friendlyDate, friendlyTime, todayIn } from "../components/bits.tsx";
 
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
@@ -64,6 +65,20 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
   const tickedHere = channels.filter((c) => ticked.has(c.id)).map((c) => c.id);
   const changedSinceApproval = !!approval && (!sameSet(new Set(tickedHere), approval.channels) || dirty.size > 0 || fieldsDirty);
   const lockedOrSent = (piece?.onCalendar ?? []).some((e) => e.locked || e.status === "scheduled" || e.status === "posted");
+
+  // Claude edited the post, or an earlier version came back: show it as saved.
+  function reloadFrom(p: PieceView) {
+    setPiece(p);
+    setKind(p.kind);
+    setTitle(p.title);
+    setLink(p.link);
+    setFiles(p.assets);
+    setCaptions(p.captions);
+    setDirty(new Set());
+    setFieldsDirty(false);
+    setTicked(new Set(p.approval?.channels ?? Object.entries(p.captions).filter(([, c]) => c.text.trim()).map(([id]) => id)));
+    onSaved(p);
+  }
 
   function editCaption(changes: Partial<CaptionView>) {
     if (!activeChannel) return;
@@ -275,6 +290,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
             {!approval && <p className="muted small">Approved posts go on the calendar with one click: Plan my calendar.</p>}
           </div>
 
+          {piece && <Comments pieceId={piece.id} onPieceChanged={reloadFrom} />}
           {piece && <Verdict pieceId={piece.id} />}
         </PostPreview>
 

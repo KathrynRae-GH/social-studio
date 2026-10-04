@@ -9,9 +9,9 @@ import { SetupChecklist } from "../components/SetupChecklist.tsx";
 type View = "week" | "list" | "month" | "grid";
 const VIEWS: { id: View; label: string }[] = [
   { id: "month", label: "Month" },
-  { id: "week", label: "This week" },
   { id: "list", label: "List" },
   { id: "grid", label: "Instagram grid" },
+  { id: "week", label: "Schedule it" },
 ];
 
 // Upcoming entries that still need a person: not locked yet, or a problem.

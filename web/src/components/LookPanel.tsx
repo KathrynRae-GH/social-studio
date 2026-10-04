@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Me } from "../../../shared/roles.ts";
 import type { AssetDetail } from "../../../shared/content.ts";
-import { FALLBACK_STYLE, SIZES, frameDocument, sampleDesign, type StyleColor, type StyleSetView } from "../../../shared/design.ts";
+import { FALLBACK_STYLE, MAX_PRIMARY, SIZES, frameDocument, sampleDesign, type StyleColor, type StyleSetView } from "../../../shared/design.ts";
 import { api, fontDataUrl, type UploadedFont } from "../boutiqly.ts";
 import { ErrorNote } from "./bits.tsx";
 
-const ROLES: StyleColor["role"][] = ["background", "text", "accent", "highlight", "other"];
-const ROLE_LABELS: Record<StyleColor["role"], string> = {
-  background: "Background",
-  text: "Text",
-  accent: "Accent",
-  highlight: "Highlight",
-  other: "Other",
-};
 const POPULAR_FONTS = [
   "Montserrat", "Poppins", "Inter", "Lato", "Open Sans", "Raleway", "Nunito", "Work Sans", "DM Sans", "Karla",
   "Playfair Display", "Lora", "Cormorant Garamond", "DM Serif Display", "Libre Baskerville", "Fraunces",
@@ -201,18 +193,25 @@ export function LookPanel({ me }: { me: Me }) {
       <div className="look">
         <div className="look-form">
           <h3>Colors</h3>
+          <p className="muted small">Claude uses every color, in all kinds of mixes, and only puts text where it's easy to read. Tick up to {MAX_PRIMARY} primary colors: the ones that lead most posts.</p>
           {draft.colors.map((c, i) => (
             <div key={i} className="color-row">
               <input type="color" value={c.hex} onChange={(e) => setColor(i, { hex: e.target.value })} disabled={!canEdit} aria-label={`${c.name || "Color"} value`} />
               <input type="text" value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Name" maxLength={40} disabled={!canEdit} aria-label="Color name" />
-              <select value={c.role} onChange={(e) => setColor(i, { role: e.target.value as StyleColor["role"] })} disabled={!canEdit} aria-label="Color use">
-                {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-              </select>
+              <label className="check primary-check" title="Primary colors lead most posts">
+                <input
+                  type="checkbox"
+                  checked={!!c.primary}
+                  disabled={!canEdit || (!c.primary && draft.colors.filter((x) => x.primary).length >= MAX_PRIMARY)}
+                  onChange={(e) => setColor(i, { primary: e.target.checked })}
+                />
+                Primary
+              </label>
               {canEdit && <button className="btn-link small" onClick={() => setDraft((d) => ({ ...d, colors: d.colors.filter((_, j) => j !== i) }))}>Remove</button>}
             </div>
           ))}
           {canEdit && draft.colors.length < 8 && (
-            <button className="btn-link small" onClick={() => setDraft((d) => ({ ...d, colors: [...d.colors, { name: "", hex: "#999999", role: "other" }] }))}>
+            <button className="btn-link small" onClick={() => setDraft((d) => ({ ...d, colors: [...d.colors, { name: "", hex: "#999999" }] }))}>
               + Add a color
             </button>
           )}
