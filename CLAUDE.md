@@ -46,7 +46,7 @@ Boutiqly is a white-labeled version of a larger platform. In everything people s
 Full detail in `docs/scope.md` and `docs/decisions.md`.
 
 - **One brand per sub-account** in v1. Key every table by brand so a second brand per sub-account can come later.
-- **Channels:** everything Boutiqly's social planner posts to (Instagram, Facebook, Threads, LinkedIn, TikTok, YouTube, Pinterest, Google Business Profile, Bluesky, Boutiqly communities). Channels beyond it (X, Nextdoor, Snapchat, Substack, any the owner adds) get ready-to-post packs.
+- **Channels:** everything Boutiqly's social planner posts to (Instagram, Facebook, Threads, LinkedIn, TikTok, YouTube, Pinterest, Google Business Profile, Bluesky; Boutiqly communities removed Oct 4, 2026 at Katy's request). Channels beyond it (X, Nextdoor, Snapchat, Substack, any the owner adds) get ready-to-post packs.
 - **What Claude makes, all in v1:** posts, carousels, Stories, Story sets, Reels (full Reels), text posts, pins, Shorts, video titles and thumbnails, Google updates, captions for every channel, alt text, the posting plan, ideas.
 - **On brand, always.** Every piece uses only its own sub-account's style set, photos and logo. Never another brand's look: Make Space's branding appears only on Make Space's posts. Fallback before a brand board is approved (or where a set has a gap): a very basic Boutiqly look, meaning the Boutiqly palette, Montserrat and plain layouts, with **no Boutiqly logo**.
 - **Onboarding starts with brand capture:** Claude scans the website, the social accounts the owner links, and the templates, loved posts and brand files they upload, then shows a brand board. Nothing else gets made until the owner approves it.

@@ -274,7 +274,7 @@ export async function getCalendar(
 }
 
 const CHANNEL_BY_PLATFORM: Record<string, string> = Object.fromEntries(
-  ["instagram", "facebook", "threads", "linkedin", "bluesky", "community", "google", "youtube"].map((id) => [
+  ["instagram", "facebook", "threads", "linkedin", "bluesky", "google", "youtube"].map((id) => [
     channel(id)!.plannerPlatform!,
     id,
   ]),

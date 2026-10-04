@@ -13,6 +13,7 @@ import { finishRender } from "../render.ts";
 import multipart from "@fastify/multipart";
 import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../fonts.ts";
 import { getPiece } from "../library.ts";
+import { addFeedback, feedbackFor } from "../feedback.ts";
 import type { AskEvent } from "../../../shared/ask.ts";
 
 interface Deps {
@@ -131,6 +132,14 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     const state = await finishRender(deps.ask.render, brand, req.params.id, viewer.ctx.userId);
     return { state, piece: await getPiece(db, viewer, req.params.id) };
   });
+
+  // ---- Love it / not this ----
+  app.get<{ Params: { id: string } }>("/api/pieces/:id/feedback", async (req) => ({
+    feedback: await feedbackFor(db, await viewerFrom(req), req.params.id),
+  }));
+  app.post<{ Params: { id: string }; Body: Body }>("/api/pieces/:id/feedback", async (req) => ({
+    feedback: await addFeedback(db, await viewerFrom(req), req.params.id, req.body ?? {}),
+  }));
 
   // ---- Ask Claude ----
   app.get("/api/conversations", async (req) => ({ conversations: await listConversations(db, await viewerFrom(req)) }));

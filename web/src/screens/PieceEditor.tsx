@@ -3,6 +3,7 @@ import type { AssetView, CaptionView, PieceView } from "../../../shared/content.
 import { KIND_LABELS, ROUTE_LABELS, channelsFor, type Kind } from "../../../shared/channels.ts";
 import { api } from "../boutiqly.ts";
 import { PostPreview } from "../components/PostPreview.tsx";
+import { Verdict } from "../components/Verdict.tsx";
 import { ErrorNote, Thumb, addDays, friendlyDate, friendlyTime, todayIn } from "../components/bits.tsx";
 
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
@@ -14,7 +15,7 @@ const KIND_HELP: Record<Kind, string> = {
   story: "One 9:16 frame (1080×1920). Instagram sends an app ping to your phone.",
   story_set: "Several 9:16 frames. One app ping per frame, a minute apart.",
   reel: "One 9:16 video. Instagram sends an app ping so you can add a sound.",
-  text: "Words only: Threads, Facebook, LinkedIn, Bluesky, community, X.",
+  text: "Words only: Threads, Facebook, LinkedIn, Bluesky, X.",
   short: "One 9:16 video for YouTube Shorts.",
   pin: "One tall image (2:3) with a title and link.",
   google_update: "An update for Google Business Profile, with an optional link.",
@@ -142,13 +143,22 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
 
   return (
     <div className="overlay" role="dialog" aria-label={piece ? "Edit post" : "New post"}>
-      <div className="sheet">
+      <div className={files.length ? "sheet wide" : "sheet"}>
         <div className="sheet-head">
           <h2>{piece ? "Edit post" : "New post"}</h2>
           <button className="btn-link" onClick={onClose}>Close</button>
         </div>
 
-        <PostPreview files={files} caption={current.text} channelName={activeChannel?.name ?? ""} shopName={shopName} />
+        <PostPreview
+          files={files}
+          channels={channels.map((c) => ({ id: c.id, name: c.name }))}
+          captions={Object.fromEntries(Object.entries(captions).map(([k, v]) => [k, v.text]))}
+          active={activeChannel?.id ?? ""}
+          onActive={setActive}
+          shopName={shopName}
+        >
+          {piece && <Verdict pieceId={piece.id} />}
+        </PostPreview>
 
         <div className="field-row">
           <label className="field">

@@ -57,8 +57,10 @@ const useTool = (name: string, input: unknown, id = `tu_${name}`): Script => () 
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 let renderedDocs: string[][] = [];
 function startFakeWorker() {
-  workerTimer = setInterval(async () => {
-    const { rows } = await t.pool.query("SELECT id, kind, payload FROM jobs WHERE status = 'queued'");
+  workerTimer = setInterval(() => void tick().catch(() => {}), 50);
+  async function tick() {
+    // Claim jobs first so two overlapping ticks never work on the same one.
+    const { rows } = await t.pool.query("UPDATE jobs SET status = 'running' WHERE status = 'queued' RETURNING id, kind, payload");
     for (const job of rows) {
       const docs: string[] = job.kind === "render" ? job.payload.docs : ["blurred"];
       if (job.kind === "render") renderedDocs.push(docs);
@@ -67,7 +69,7 @@ function startFakeWorker() {
       }
       await t.pool.query("UPDATE jobs SET status = 'done', result = '{}' WHERE id = $1", [job.id]);
     }
-  }, 50);
+  }
 }
 
 let t: Awaited<ReturnType<typeof testApp>>;
@@ -581,5 +583,23 @@ describe("variety", () => {
     const result = JSON.parse(((calls[1]!.messages.at(-1)!.content as { content: { type: string; text?: string }[] }[])[0]!.content)[0]!.text!);
     expect(result.notes.join(" ")).toMatch(/Still missing captions for: .*facebook/);
     expect((calls[0]!.system as { text: string }[])[0]!.text).toContain("a caption for every channel this kind of piece can go to");
+  });
+});
+
+describe("love it / not this", () => {
+  it("saves verdicts per shop and puts them in front of Claude", async () => {
+    await claudeOn();
+    const pieceId = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "post", title: "Bandana post" } })).json().piece.id;
+    const res = await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/feedback`, headers: agency.headers, payload: { rating: -1, note: "Too busy, the text is hard to read" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().feedback).toEqual([expect.objectContaining({ rating: -1, note: "Too busy, the text is hard to read", by: "Katy Agency" })]);
+    expect((await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/feedback`, headers: agency.headers, payload: { rating: 5 } })).statusCode).toBe(400);
+    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
+    expect((await t.app.inject({ url: `/api/pieces/${pieceId}/feedback`, headers: elsewhere.headers })).statusCode).toBe(404);
+
+    script = [say("Noted.")];
+    await askRaw("Make a post");
+    const sent = calls[0]!.messages[0]!.content as { type: string; text?: string }[];
+    expect(sent.find((b) => b.text?.includes("verdicts on recent posts"))!.text).toContain('NOT THIS: "Bandana post" (post) — "Too busy, the text is hard to read"');
   });
 });

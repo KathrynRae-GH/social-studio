@@ -37,7 +37,7 @@ describe("how each kind reaches each channel", () => {
   });
 
   it("lists the channels for a kind", () => {
-    expect(channelsFor("text").map((c) => c.id)).toEqual(["facebook", "threads", "linkedin", "bluesky", "community", "x"]);
+    expect(channelsFor("text").map((c) => c.id)).toEqual(["facebook", "threads", "linkedin", "bluesky", "x"]);
   });
 
   it("names every channel and gives it a caption limit", () => {

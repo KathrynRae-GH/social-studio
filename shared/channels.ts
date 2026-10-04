@@ -38,7 +38,6 @@ export type ChannelId =
   | "threads"
   | "linkedin"
   | "bluesky"
-  | "community"
   | "google"
   | "youtube"
   | "pinterest"
@@ -129,19 +128,6 @@ export const CHANNELS: Channel[] = [
     plannerPlatform: "bluesky",
     captionLimit: 300,
     maxMedia: 4,
-    sizes: IMAGE_POST,
-    kinds: {
-      text: { route: "publish", plannerType: "post" },
-      post: { route: "publish", plannerType: "post" },
-      carousel: { route: "publish", plannerType: "post" },
-    },
-  },
-  {
-    id: "community",
-    name: "Boutiqly community",
-    plannerPlatform: "community",
-    captionLimit: 8000,
-    maxMedia: 10,
     sizes: IMAGE_POST,
     kinds: {
       text: { route: "publish", plannerType: "post" },

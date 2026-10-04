@@ -157,3 +157,17 @@ Claude (technical):
 - Layouts are grouped into three kinds: mostly graphics and type; one big photo; several photos.
 - A new post must be a different kind from the last one, unless the owner asked for the same. If the shop has no usable photos, graphics-led posts are still allowed back to back.
 - The existing rule that a post can't reuse the layout family of the last three still applies.
+
+## Oct 4, 2026: love it / not this, and a side-by-side preview
+
+Katy:
+- Owners react to each post: 👍 Love it or 👎 Not this, with an optional "why". Claude reads the recent verdicts before every design, the way the prototype's skills learned from her notes.
+- The large preview: no black bars. Slides on the left at their own shape, the caption for each channel on the right (stacked on a phone), settings underneath.
+- Bringing general design craft over from the Mosaic skill was tried, then **undone** at Katy's request (too much of it is specific to Mosaic).
+
+Claude (technical):
+- `piece_feedback` table (migration `0008`). Each message to Claude lists the last 15 verdicts (loved, or not this, with the note, layout and motifs), plus Claude's recently archived pieces as "probably not wanted".
+
+## Oct 4, 2026: Boutiqly communities removed (Katy)
+
+- Katy asked to remove the "Boutiqly community" channel. It's gone from the channel list, the post editor, Claude's channels and the scope (`docs/scope.md`, `CLAUDE.md`). It can come back later as one entry in `shared/channels.ts`.

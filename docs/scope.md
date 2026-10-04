@@ -9,7 +9,7 @@ v1 writes and designs for every channel Boutiqly can post to, and hands over rea
 | # | Question | Answer |
 |---|---|---|
 | 1 | What Claude makes | Everything the Make Space prototype makes (captions, posting plan, text posts, posts, carousels, Stories, Story sets, Reels), plus the formats other channels need: pins, Shorts, video titles and thumbnails, Google updates |
-| 2 | Channels | Every channel Boutiqly posts to: Instagram, Facebook, Threads, LinkedIn, TikTok, YouTube, Pinterest, Google Business Profile, Bluesky and Boutiqly communities. Beyond it (X and others), ready-to-post packs |
+| 2 | Channels | Every channel Boutiqly posts to: Instagram, Facebook, Threads, LinkedIn, TikTok, YouTube, Pinterest, Google Business Profile and Bluesky (Boutiqly communities removed Oct 4, 2026). Beyond it (X and others), ready-to-post packs |
 | 3 | Who uses it and approves | Account owners, the team members they designate, and Boutiqly's team (agency accounts); all can approve |
 | 4 | Onboarding | Brand capture first: Claude scans the website, the social accounts the owner links, and the templates, posts and brand files they upload, then shows a brand board to approve before anything else is made |
 | 5 | Brand kit and styles | A custom style set for every brand, designed by Claude from the approved brand board. Nothing ever carries another brand's look; the fallback is a basic Boutiqly palette and type, no logo |
@@ -52,7 +52,6 @@ Approving a post sets it up in Boutiqly's social planner for every channel Bouti
 | YouTube | Shorts from Reels; titles, descriptions, tags and thumbnails for longer videos the owner uploads | Boutiqly publishes |
 | Pinterest | Pins: a vertical image with a title, description and link | Boutiqly publishes |
 | Google Business Profile | Updates, offers and events | Boutiqly publishes |
-| Boutiqly communities | Posts for the shop's own community | Boutiqly publishes |
 | X, and channels Boutiqly can't reach (Nextdoor, Snapchat, Substack, or any the owner adds) | Media sized for the channel, plus the caption | Ready-to-post pack: download or copy from the tab and post by hand |
 
 X isn't in Boutiqly's channel list as of Aug 2026, though some guides still show it; check the connect screen on day one, and if X is there it moves to "Boutiqly publishes". Each channel carries its own caption rules and image sizes, and a new channel can be added any time as a ready-to-post channel. Times are stored in the sub-account's time zone and sent to Boutiqly in UTC. Boutiqly only returns a post's first image, so the app keeps its own record of every Story frame it sent.

@@ -14,6 +14,7 @@ import { tryWithLock } from "../jobs.ts";
 import { assetDetail, inspirationFor, ownAsset, tagAsset, usableInDesign } from "../assets.ts";
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
+import { recentVerdicts } from "../feedback.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
 import { CHANNELS, KIND_LABELS, channel, channelsFor, type Kind } from "../../../shared/channels.ts";
@@ -715,6 +716,14 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
         userContent.push({ type: "text", text: `The shop's inspiration board (${board.length} post${board.length > 1 ? "s" : ""} they love). Study these before designing:` });
         for (const a of board) userContent.push({ type: "image", source: { type: "url", url: a.url } });
       }
+    }
+    // What the owner thought of recent posts: follow what they loved, avoid what they didn't.
+    const verdicts = await recentVerdicts(deps.db, brand);
+    if (verdicts) {
+      userContent.push({
+        type: "text",
+        text: `The owner's verdicts on recent posts (newest first). Treat these as design direction: repeat what they loved (without copying the same layout), never repeat what they rejected, and follow every note:\n${verdicts}`,
+      });
     }
     // What the shop's recent designs look like, so the next one is different.
     const recent = await recentDesigns(deps.db, brand, RECENT_SHOWN);
