@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AssetDetail } from "../../../shared/content.ts";
 import { api } from "../boutiqly.ts";
-import { ErrorNote, Thumb } from "../components/bits.tsx";
+import { ErrorNote, Thumb, cardProps } from "../components/bits.tsx";
 
 type Filter = "all" | "usable" | "attention" | "untagged" | "designs";
 
@@ -159,7 +159,7 @@ export function AssetsScreen() {
 
       <div className="asset-grid">
         {shown.map((a) => (
-          <button key={a.id} className="asset-card" onClick={() => setOpen(a)}>
+          <div key={a.id} className="asset-card" {...cardProps(() => setOpen(a))}>
             <Thumb asset={a} className="asset-thumb" />
             <span className="asset-meta">
               <span className="small asset-name">{a.name}</span>
@@ -175,7 +175,7 @@ export function AssetsScreen() {
                 <span className="status-chip status-needs_attention">Not for Claude</span>
               )}
             </span>
-          </button>
+          </div>
         ))}
       </div>
 
