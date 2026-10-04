@@ -73,3 +73,31 @@ describe("shop time zone ↔ UTC", () => {
     expect(() => zonedToUtc("soon", "9", "America/Chicago")).toThrow();
   });
 });
+
+import { brandVariables, contrastRatio, readablePairs, FALLBACK_STYLE } from "../../shared/design.ts";
+
+describe("brand colors", () => {
+  it("measures contrast the standard way", () => {
+    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 0);
+    expect(contrastRatio("#1d3c34", "#fbf8f3")).toBeGreaterThan(4.5);
+  });
+
+  it("picks a light page and readable text from any palette, with primaries leading", () => {
+    const style = {
+      ...FALLBACK_STYLE,
+      colors: [
+        { name: "Sage", hex: "#c9d2bf" },
+        { name: "Burnt Orange", hex: "#d4703f", primary: true },
+        { name: "Cream", hex: "#fbf3ea" },
+        { name: "Hunter", hex: "#56654b", primary: true },
+      ],
+    };
+    const v = brandVariables(style);
+    expect(v["--brand-background"]).toBe("#fbf3ea");
+    expect(v["--brand-text"]).toBe("#56654b");
+    expect(v["--brand-accent"]).toBe("#d4703f");
+    expect(v["--brand-primary-1"]).toBe("#d4703f");
+    const onOrange = readablePairs(style.colors).find((p) => p.on.name === "Burnt Orange")!;
+    expect(onOrange.body.map((c) => c.name)).not.toContain("Cream");
+  });
+});

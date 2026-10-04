@@ -19,7 +19,7 @@ import { addedAt, isNewProduct, liveProducts } from "../store/sync.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
 import { CHANNELS, KIND_LABELS, channel, channelsFor, type Kind } from "../../../shared/channels.ts";
-import { LAYOUTS, LAYOUT_KINDS, SIZES, brandVariables, layoutKind, type Design, type StyleSetView } from "../../../shared/design.ts";
+import { LAYOUTS, LAYOUT_KINDS, SIZES, brandVariables, layoutKind, readablePairs, type Design, type StyleSetView } from "../../../shared/design.ts";
 import { utcToZoned, zonedToUtc } from "../../../shared/time.ts";
 import type { AskEvent, ChatItem, ConversationSummary, ConversationView, ProposalView } from "../../../shared/ask.ts";
 
@@ -140,9 +140,22 @@ Name the two or three biggest weaknesses to yourself, then fix them.`;
 
 function colorMap(style: StyleSetView): string {
   const vars = brandVariables(style);
-  const byRole = Object.entries(vars).filter(([k]) => k.startsWith("--brand-") && !k.startsWith("--brand-color-"));
-  const lines = style.colors.map((c, i) => `- var(--brand-color-${i + 1}) = ${c.name} ${c.hex} (${c.role})`);
-  lines.push(...byRole.map(([k, v]) => `- var(${k}) = ${v}`));
+  const lines = style.colors.map((c, i) => `- var(--brand-color-${i + 1}) = ${c.name} ${c.hex}${c.primary ? " (PRIMARY)" : ""}`);
+  const primaries = style.colors.filter((c) => c.primary);
+  lines.push(
+    "",
+    "Every color is available for anything: backgrounds, type, shapes, stickers, borders, accents. Mix them in different combinations from post to post, and vary which color leads.",
+    primaries.length
+      ? `The primary colors (${primaries.map((c) => c.name).join(", ")}) carry the brand: use at least one prominently in every post, and the others in supporting roles.`
+      : "No primary colors are marked yet, so balance all of them.",
+    "Contrast rule: only put text on a color using a pairing from this list (white and black count). Body text needs 4.5:1; big headings (about 48px and up) can use 3:1.",
+    ...readablePairs(style.colors).map(
+      (p) =>
+        `- On ${p.on.name}: body text in ${p.body.map((c) => c.name).join(", ") || "none, so keep text off this color"}${p.headings.length ? `; big headings also in ${p.headings.map((c) => c.name).join(", ")}` : ""}`,
+    ),
+    "",
+    `Defaults the engine sets on the page: var(--brand-background) = ${vars["--brand-background"]}, var(--brand-text) = ${vars["--brand-text"]}. Override freely.`,
+  );
   return lines.join("\n");
 }
 

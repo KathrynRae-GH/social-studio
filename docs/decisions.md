@@ -226,3 +226,15 @@ Claude (technical):
 - The edit runs in the background as an Ask Claude conversation (so it shows in the person's Ask Claude history). Claude is told to change only what the comments ask for, keep the layout unless told otherwise, and say in a sentence what it changed. The tab checks every 4 seconds and shows the new version when it's done.
 - A post already scheduled or posted in Boutiqly's social planner can't be edited here: delete it there first. If Claude fails, the comments stay open to send again.
 - One edit per post at a time. An edit that never finished (a server restart) stops blocking after 20 minutes.
+
+## Oct 4, 2026: every color for everything, with up to 3 primary (Katy)
+
+Katy:
+- Colors no longer have jobs (background, text, accent, highlight). Claude uses every color in all kinds of mixes, always with good contrast. Owners tick up to 3 **primary** colors, the ones that lead most posts.
+- The Calendar views go Month (opens first), List, Instagram grid, then **Schedule it** (what used to be "This week").
+
+Claude (technical):
+- `StyleColor` loses `role` (old saved sets keep it, but it's ignored) and gains `primary`. The server refuses more than 3 primaries.
+- The engine still sets a page color and a text color (the lightest color, and the most readable color on it, or near-black/white if none reads well). `--brand-accent` and `--brand-highlight` now come from the primaries first, so older designs keep rendering. New variables `--brand-primary-1..3`.
+- Claude's instructions list every color (with PRIMARY marked) and a readable-pairs table worked out with WCAG contrast: 4.5:1 for body text, 3:1 for big headings, with white and black included. Claude is told every color can be used anywhere, to vary which color leads, to give a primary a prominent place in every post, and to put text only on readable pairs.
+- Ticking primaries changes the look, so it needs approving again, like any other change to the look.

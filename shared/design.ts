@@ -3,11 +3,16 @@
 // logo, so a fix here reaches every brand. Used by the server (to build the
 // documents the worker renders) and by the tab (the Look sample).
 
+// Every color can be used for anything (backgrounds, type, shapes, accents);
+// the shop marks up to three as primary, the ones that lead most often.
 export interface StyleColor {
   name: string;
   hex: string; // #rrggbb
-  role: "background" | "text" | "accent" | "highlight" | "other";
+  primary?: boolean;
+  role?: string; // from before Oct 4, 2026; no longer used
 }
+
+export const MAX_PRIMARY = 3;
 
 // A font file the shop uploaded (not on Google Fonts).
 export interface CustomFont {
@@ -106,11 +111,11 @@ export interface Design {
 // fill gaps): Boutiqly's palette, Montserrat, plain layouts, never a logo.
 export const FALLBACK_STYLE: StyleSetView = {
   colors: [
-    { name: "Page Cream", hex: "#fbf8f3", role: "background" },
-    { name: "Deep Forest", hex: "#1d3c34", role: "text" },
-    { name: "Orange", hex: "#de771f", role: "accent" },
-    { name: "Pale Mint", hex: "#c4e5e2", role: "highlight" },
-    { name: "Green", hex: "#276f3d", role: "other" },
+    { name: "Page Cream", hex: "#fbf8f3" },
+    { name: "Deep Forest", hex: "#1d3c34", primary: true },
+    { name: "Orange", hex: "#de771f", primary: true },
+    { name: "Pale Mint", hex: "#c4e5e2" },
+    { name: "Green", hex: "#276f3d" },
   ],
   customFonts: [],
   headingFont: "Montserrat",
@@ -130,29 +135,67 @@ const FONT = /^[A-Za-z0-9 ]{2,40}$/;
 export function validColor(c: unknown): c is StyleColor {
   const x = c as StyleColor;
   return !!x && typeof x.name === "string" && x.name.length <= 40 && typeof x.hex === "string" && HEX.test(x.hex) &&
-    ["background", "text", "accent", "highlight", "other"].includes(x.role);
+    (x.primary === undefined || typeof x.primary === "boolean");
+}
+
+// ---- Contrast (WCAG) ----
+
+function channel(v: number): number {
+  const c = v / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+export function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// Which colors read well on which: body text needs 4.5:1, big headings 3:1.
+export function readablePairs(colors: StyleColor[]): { on: StyleColor; body: StyleColor[]; headings: StyleColor[] }[] {
+  const withBW: StyleColor[] = [...colors, { name: "White", hex: "#ffffff" }, { name: "Black", hex: "#000000" }];
+  return colors.map((on) => ({
+    on,
+    body: withBW.filter((c) => c.hex !== on.hex && contrastRatio(c.hex, on.hex) >= 4.5),
+    headings: withBW.filter((c) => c.hex !== on.hex && contrastRatio(c.hex, on.hex) >= 3 && contrastRatio(c.hex, on.hex) < 4.5),
+  }));
+}
+
+// Starting points the engine needs (the page color and its text color), picked
+// from the palette: the lightest color as the page, the most readable color on
+// it as text. Designs are free to use any color anywhere.
+function defaults(style: StyleSetView) {
+  const cs = style.colors.length ? style.colors : FALLBACK_STYLE.colors;
+  const background = [...cs].sort((a, b) => luminance(b.hex) - luminance(a.hex))[0]!.hex;
+  const text = [...cs].sort((a, b) => contrastRatio(b.hex, background) - contrastRatio(a.hex, background))[0]!.hex;
+  const usableText = contrastRatio(text, background) >= 4.5 ? text : luminance(background) > 0.4 ? "#111111" : "#ffffff";
+  const rest = cs.filter((c) => c.hex !== background && c.hex !== usableText);
+  const ordered = [...rest.filter((c) => c.primary), ...rest.filter((c) => !c.primary)];
+  return { background, text: usableText, accent: ordered[0]?.hex ?? "#de771f", highlight: ordered[1]?.hex ?? ordered[0]?.hex ?? "#c4e5e2" };
 }
 
 export function validFont(f: unknown): f is string {
   return typeof f === "string" && FONT.test(f);
 }
 
-function colorFor(style: StyleSetView, role: StyleColor["role"], fallback: string): string {
-  return style.colors.find((c) => c.role === role)?.hex ?? fallback;
-}
-
 // CSS variables every design can use. Designs should use these, not raw hex,
 // so the same structure works for any shop.
 export function brandVariables(style: StyleSetView): Record<string, string> {
+  const d = defaults(style);
   const vars: Record<string, string> = {
-    "--brand-background": colorFor(style, "background", "#fbf8f3"),
-    "--brand-text": colorFor(style, "text", "#1d3c34"),
-    "--brand-accent": colorFor(style, "accent", "#de771f"),
-    "--brand-highlight": colorFor(style, "highlight", "#c4e5e2"),
+    "--brand-background": d.background,
+    "--brand-text": d.text,
+    "--brand-accent": d.accent,
+    "--brand-highlight": d.highlight,
     "--font-heading": `"${style.headingFont}", sans-serif`,
     "--font-body": `"${style.bodyFont}", sans-serif`,
   };
   style.colors.forEach((c, i) => (vars[`--brand-color-${i + 1}`] = c.hex));
+  style.colors.filter((c) => c.primary).forEach((c, i) => (vars[`--brand-primary-${i + 1}`] = c.hex));
   return vars;
 }
 

@@ -206,7 +206,12 @@ describe("making a real post", () => {
     expect(result.content).toContain("needs its captions");
     expect((await t.pool.query("SELECT 1 FROM pieces")).rowCount).toBe(0);
     const system = (calls[0]!.system as { text: string }[])[0]!.text;
-    expect(system).toContain("var(--brand-color-1) = Page Cream #fbf8f3 (background)");
+    expect(system).toContain("var(--brand-color-1) = Page Cream #fbf8f3");
+    expect(system).toContain("var(--brand-color-2) = Deep Forest #1d3c34 (PRIMARY)");
+    expect(system).toContain("Every color is available for anything");
+    // Readable pairs: Deep Forest on cream reads; cream on orange doesn't for body text.
+    expect(system).toMatch(/On Page Cream: body text in [^\n]*Deep Forest/);
+    expect(system).not.toMatch(/On Orange: body text in [^\n]*Page Cream/);
     expect(system).toContain("Never make tests, color swatches, palette checks");
   });
 });
@@ -305,7 +310,7 @@ describe("designing with Claude", () => {
 
   it("uses the shop's look only once it's approved", async () => {
     await claudeOn();
-    await t.app.inject({ method: "PUT", url: "/api/style", headers: agency.headers, payload: { colors: [{ name: "Riot Pink", hex: "#ff3399", role: "accent" }, { name: "Ink", hex: "#111111", role: "text" }], headingFont: "Bebas Neue" } });
+    await t.app.inject({ method: "PUT", url: "/api/style", headers: agency.headers, payload: { colors: [{ name: "Cream", hex: "#fff8f0" }, { name: "Riot Pink", hex: "#ff3399", primary: true }, { name: "Ink", hex: "#111111" }], headingFont: "Bebas Neue" } });
     const design = { size: "story", layout: "arch-window", motifs: "test motif", css: "", frames: [{ html: "<h1>Hi</h1>" }] };
     script = [useTool("design_piece", { kind: "story", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok"), useTool("design_piece", { kind: "story", title: "b", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { ...design, layout: "pattern" } }), say("ok")];
     await askRaw("Story please");
