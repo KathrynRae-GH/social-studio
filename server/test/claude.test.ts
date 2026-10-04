@@ -339,7 +339,7 @@ describe("designing with Claude", () => {
 });
 
 describe("strategy", () => {
-  const put = (body: unknown, headers = agency.headers) => t.app.inject({ method: "PUT", url: "/api/strategy", headers, payload: body });
+  const put = (body: Record<string, unknown>, headers = agency.headers) => t.app.inject({ method: "PUT", url: "/api/strategy", headers, payload: body });
   const get = async () => (await t.app.inject({ url: "/api/strategy", headers: agency.headers })).json().strategy;
   async function settled() {
     for (let i = 0; i < 100; i++) {
