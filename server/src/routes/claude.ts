@@ -14,6 +14,7 @@ import multipart from "@fastify/multipart";
 import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../fonts.ts";
 import { getPiece } from "../library.ts";
 import { addFeedback, feedbackFor } from "../feedback.ts";
+import { planCalendar } from "../planner.ts";
 import type { AskEvent } from "../../../shared/ask.ts";
 
 interface Deps {
@@ -58,6 +59,9 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     }
     return claudeSettings(deps.ask, brand);
   });
+
+  // ---- Plan my calendar (Claude places approved posts) ----
+  app.post<{ Body: Body }>("/api/calendar/plan", async (req) => planCalendar(deps.ask, await viewerFrom(req), req.body ?? {}));
 
   // ---- The shop's look ----
   app.get("/api/style", async (req) => ({ style: await getStyleSet(db, await viewerFrom(req)) }));

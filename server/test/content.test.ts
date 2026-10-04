@@ -94,18 +94,34 @@ async function piece(kind: string, assetIds: string[], captions: Record<string, 
   expect(res.statusCode).toBe(200);
   const id = res.json().piece.id as string;
   for (const [ch, text] of Object.entries(captions)) {
-    await t.app.inject({ method: "PUT", url: `/api/pieces/${id}/captions/${ch}`, headers: agency.headers, payload: { text, altText: "A sunny shop window", status: "final" } });
+    await t.app.inject({ method: "PUT", url: `/api/pieces/${id}/captions/${ch}`, headers: agency.headers, payload: { text, altText: "A sunny shop window" } });
   }
   return id;
 }
 
+const approvePiece = (id: string, channels: string[], headers = agency.headers) =>
+  t.app.inject({ method: "POST", url: `/api/pieces/${id}/approve`, headers, payload: { channels } });
+
+// Approves the post for these networks, then puts it on the calendar.
 async function schedule(pieceId: string, channels: string[], date = "2030-10-20", time = "09:00") {
+  const ok = await approvePiece(pieceId, channels);
+  expect(ok.statusCode, ok.body).toBe(200);
   const res = await t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId, channels, date, time } });
-  expect(res.statusCode).toBe(200);
+  expect(res.statusCode, res.body).toBe(200);
   return res.json().entries as { id: string; channel: string; route: string; status: string }[];
 }
 
-const approve = (id: string, headers = agency.headers) => t.app.inject({ method: "POST", url: `/api/calendar/${id}/approve`, headers });
+const lock = (id: string, locked = true, headers = agency.headers) => t.app.inject({ method: "POST", url: `/api/calendar/${id}/lock`, headers, payload: { locked } });
+const send = (headers = agency.headers) => t.app.inject({ method: "POST", url: "/api/calendar/send", headers });
+// Locks the entries and sends everything locked.
+async function lockAndSend(...ids: string[]) {
+  for (const id of ids) expect((await lock(id)).statusCode).toBe(200);
+  const res = await send();
+  expect(res.statusCode, res.body).toBe(200);
+  return res.json();
+}
+const entryById = async (id: string) =>
+  (await t.app.inject({ url: "/api/calendar?from=2000-01-01&to=2100-01-01", headers: agency.headers })).json().entries.find((e: { id: string }) => e.id === id);
 const goLive = (on = true, headers = agency.headers) => t.app.inject({ method: "PUT", url: "/api/settings/live-posting", headers, payload: { on } });
 
 describe("library", () => {
@@ -136,8 +152,64 @@ describe("library", () => {
     const a = await upload();
     const id = await piece("post", [a.id], { instagram: "Hello IG", facebook: "Hello FB" });
     const p = (await t.app.inject({ url: `/api/pieces/${id}`, headers: agency.headers })).json().piece;
-    expect(p.captions.instagram).toEqual({ text: "Hello IG", altText: "A sunny shop window", status: "final" });
+    expect(p.captions.instagram).toEqual({ text: "Hello IG", altText: "A sunny shop window", status: "draft" });
     expect(p.assets).toHaveLength(1);
+  });
+});
+
+describe("approving in the Library", () => {
+  it("approves for the ticked networks and makes those captions final", async () => {
+    const a = await upload();
+    const id = await piece("post", [a.id], { instagram: "Hi", facebook: "Hi there" });
+    const res = await approvePiece(id, ["instagram", "facebook", "youtube"]); // a post can't go to YouTube: ignored
+    expect(res.statusCode).toBe(200);
+    expect(res.json().piece.approval).toMatchObject({ by: "Katy Agency", channels: ["instagram", "facebook"] });
+    expect(res.json().piece.captions.instagram.status).toBe("final");
+    const log = await t.pool.query("SELECT action FROM audit_log WHERE action = 'piece.approve'");
+    expect(log.rowCount).toBe(1);
+  });
+
+  it("won't approve what can't be posted", async () => {
+    const noPhoto = await piece("post", [], { instagram: "Hi" });
+    expect((await approvePiece(noPhoto, ["instagram"])).json().error).toContain("Add a photo");
+    const long = await piece("text", [], { threads: "x".repeat(501) });
+    expect((await approvePiece(long, ["threads"])).json().error).toContain("limit is 500");
+    const none = await piece("text", [], { threads: "hi" });
+    expect((await approvePiece(none, [])).statusCode).toBe(400);
+  });
+
+  it("only approved posts go on the calendar, and only to approved networks", async () => {
+    const id = await piece("text", [], { threads: "hi", facebook: "hi" });
+    const add = (channels: string[]) => t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId: id, channels, date: "2030-10-20", time: "09:00" } });
+    expect((await add(["threads"])).json().error).toContain("Approve the post");
+    await approvePiece(id, ["threads"]);
+    expect((await add(["facebook"])).json().error).toContain("isn't approved for Facebook");
+    expect((await add(["threads"])).statusCode).toBe(200);
+  });
+
+  it("undo takes it off the calendar, unless something's locked or sent", async () => {
+    const id = await piece("text", [], { threads: "hi", facebook: "hi" });
+    const [threads] = await schedule(id, ["threads", "facebook"]);
+    await lock(threads!.id);
+    const undo = () => t.app.inject({ method: "DELETE", url: `/api/pieces/${id}/approve`, headers: agency.headers });
+    expect((await undo()).statusCode).toBe(400);
+    // Dropping a locked network isn't allowed either; dropping an unlocked one removes its spot.
+    expect((await approvePiece(id, ["facebook"])).statusCode).toBe(400);
+    expect((await approvePiece(id, ["threads"])).statusCode).toBe(200);
+    expect((await t.pool.query("SELECT channel FROM calendar_entries")).rows).toEqual([{ channel: "threads" }]);
+    await lock(threads!.id, false);
+    const res = await undo();
+    expect(res.json().piece).toMatchObject({ approval: null, onCalendar: [] });
+    expect(res.json().piece.captions.threads.status).toBe("draft");
+  });
+
+  it("lets the shop's owner approve, but not people without access", async () => {
+    const id = await piece("text", [], { threads: "hi" });
+    const other = await signInAs(t.app, people.other);
+    expect((await approvePiece(id, ["threads"], other.headers)).statusCode).toBe(403);
+    const owner = await signInAs(t.app, people.owner);
+    await t.pool.query("INSERT INTO team_members (brand_id, user_id, role, added_by) SELECT id, 'u_owner', 'owner', 'u_agency' FROM brands");
+    expect((await approvePiece(id, ["threads"], owner.headers)).statusCode).toBe(200);
   });
 });
 
@@ -151,7 +223,7 @@ describe("calendar", () => {
       linkedin: "pack", // connected but expired
       x: "pack",
     });
-    expect(entries.every((e) => e.status === "suggested")).toBe(true);
+    expect(entries.every((e) => e.status === "approved")).toBe(true);
   });
 
   it("refuses a kind the channel doesn't take", async () => {
@@ -160,62 +232,59 @@ describe("calendar", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("warns about accounts that need reconnecting", async () => {
+  it("warns about accounts that need reconnecting, and counts approved posts waiting for a date", async () => {
+    const id = await piece("text", [], { threads: "hi", facebook: "hi" });
+    await approvePiece(id, ["threads", "facebook"]);
     const cal = (await t.app.inject({ url: "/api/calendar", headers: agency.headers })).json();
     expect(cal.timezone).toBe("America/Chicago");
     expect(cal.notices.join(" ")).toContain("LinkedIn (Test Boutique) needs reconnecting");
+    expect(cal.waiting).toBe(2);
   });
 });
 
-describe("approve while live posting is off", () => {
-  it("sends nothing and shows what it would have sent", async () => {
-    const a = await upload();
-    const id = await piece("post", [a.id], { instagram: "Fall sale Saturday" });
-    const [entry] = await schedule(id, ["instagram"]);
-    const res = await approve(entry!.id);
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(posts).toHaveLength(0);
-    expect(body.entry.status).toBe("approved");
-    expect(body.entry.dryRun).toBe(true);
-    expect(body.dryRun).toEqual([
-      {
-        accountIds: ["acc_ig"],
-        status: "scheduled",
-        userId: "u_agency",
-        summary: "Fall sale Saturday",
-        media: [{ url: a.url, type: "image/jpeg", altText: "A sunny shop window" }],
-        type: "post",
-        scheduleDate: "2030-10-20T14:00:00.000Z", // 9 am Dallas time
-        instagramPostDetails: { type: "post" },
-      },
-    ]);
-  });
-});
-
-const draft = (id: string, headers = agency.headers) => t.app.inject({ method: "POST", url: `/api/calendar/${id}/draft`, headers });
-
-describe("send to Boutiqly as a draft", () => {
-  it("makes a draft in the planner while live posting is off, without changing the entry's status", async () => {
-    const a = await upload();
-    const id = await piece("post", [a.id], { instagram: "Fall sale Saturday" });
-    const [entry] = await schedule(id, ["instagram"]);
-    const res = await draft(entry!.id);
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ alreadySent: false, entry: { status: "suggested", draftsSent: 1, sentFrames: 0 } });
-    expect(res.json().entry.draftSentAt).toBeTruthy();
-    expect(posts).toHaveLength(1);
-    expect(posts[0]!.body).toMatchObject({ accountIds: ["acc_ig"], status: "draft", summary: "Fall sale Saturday", type: "post" });
-    const log = await t.pool.query("SELECT action FROM audit_log WHERE action LIKE 'calendar.send_draft%'");
-    expect(log.rows).toEqual([{ action: "calendar.send_draft" }]);
-  });
-
-  it("sends nothing on a second click", async () => {
+describe("locking", () => {
+  it("locked entries can't be moved or removed until unlocked", async () => {
     const id = await piece("text", [], { threads: "hi" });
     const [entry] = await schedule(id, ["threads"]);
-    await draft(entry!.id);
-    const again = await draft(entry!.id);
-    expect(again.json().alreadySent).toBe(true);
+    expect((await lock(entry!.id)).json().entry.locked).toBe(true);
+    const move = () => t.app.inject({ method: "PATCH", url: `/api/calendar/${entry!.id}`, headers: agency.headers, payload: { date: "2030-11-01", time: "10:00" } });
+    expect((await move()).json().error).toContain("locked");
+    expect((await t.app.inject({ method: "DELETE", url: `/api/calendar/${entry!.id}`, headers: agency.headers })).statusCode).toBe(400);
+    await lock(entry!.id, false);
+    expect((await move()).statusCode).toBe(200);
+  });
+
+  it("Lock all locks every planned entry still to come", async () => {
+    const id = await piece("text", [], { threads: "hi", facebook: "hi" });
+    await schedule(id, ["threads", "facebook"]);
+    const res = await t.app.inject({ method: "POST", url: "/api/calendar/lock-all", headers: agency.headers });
+    expect(res.json().locked).toBe(2);
+  });
+});
+
+describe("send while live posting is off", () => {
+  it("sends only locked entries, as drafts, and never the same one twice", async () => {
+    const a = await upload();
+    const id = await piece("post", [a.id], { instagram: "Fall sale Saturday", facebook: "Fall sale" });
+    const [ig, fb] = await schedule(id, ["instagram", "facebook"]);
+    const first = await lockAndSend(ig!.id);
+    expect(first).toMatchObject({ live: false, drafted: 1, scheduled: 0, problems: [] });
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body).toEqual({
+      accountIds: ["acc_ig"],
+      status: "draft",
+      userId: "u_agency",
+      summary: "Fall sale Saturday",
+      media: [{ url: a.url, type: "image/jpeg", altText: "A sunny shop window" }],
+      type: "post",
+      scheduleDate: "2030-10-20T14:00:00.000Z", // 9 am Dallas time
+      instagramPostDetails: { type: "post" },
+    });
+    expect(await entryById(ig!.id)).toMatchObject({ status: "approved", locked: true, draftsSent: 1 });
+    expect((await entryById(fb!.id)).draftsSent).toBe(0); // not locked: not sent
+
+    const again = (await send()).json();
+    expect(again).toMatchObject({ drafted: 0, alreadySent: 1 });
     expect(posts).toHaveLength(1);
   });
 
@@ -224,33 +293,21 @@ describe("send to Boutiqly as a draft", () => {
     const id = await piece("story_set", frames.map((f) => f.id));
     const [entry] = await schedule(id, ["instagram"]);
     failPostNumber = 2;
-    const first = await draft(entry!.id);
-    expect(first.statusCode).toBe(502);
-    expect(first.json().error).toBe("Frame 2 of 3 didn't go through. Boutiqly said: Instagram is busy, try again");
-    const second = await draft(entry!.id);
-    expect(second.json().entry).toMatchObject({ draftsSent: 3, status: "suggested", lastError: null });
+    const first = await lockAndSend(entry!.id);
+    expect(first.problems[0].message).toContain("Frame 2 of 3 didn't go through: Instagram is busy, try again");
+    const second = (await send()).json();
+    expect(second.drafted).toBe(1);
+    expect(await entryById(entry!.id)).toMatchObject({ draftsSent: 3, lastError: null });
     expect(posts).toHaveLength(3);
     expect(posts.every((p) => p.body.status === "draft")).toBe(true);
   });
 
-  it("leaves Approve working as before afterwards", async () => {
-    const id = await piece("text", [], { threads: "hi" });
-    const [entry] = await schedule(id, ["threads"]);
-    await draft(entry!.id);
-    const res = await approve(entry!.id);
-    expect(res.json().entry).toMatchObject({ status: "approved", dryRun: true });
-    expect(posts).toHaveLength(1); // just the draft
-  });
-
-  it("refuses packs, other shops and people without access", async () => {
-    const id = await piece("text", [], { x: "hi", threads: "hi" });
-    const [pack, threads] = await schedule(id, ["x", "threads"]);
-    expect(pack!.route).toBe("pack");
-    expect((await draft(pack!.id)).statusCode).toBe(400);
-    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
-    expect((await draft(threads!.id, elsewhere.headers)).statusCode).toBe(404);
+  it("counts packs as by hand, and refuses people without access", async () => {
+    const id = await piece("text", [], { x: "hi" });
+    const [pack] = await schedule(id, ["x"]);
+    expect((await lockAndSend(pack!.id)).byHand).toBe(1);
     const other = await signInAs(t.app, people.other);
-    expect((await draft(threads!.id, other.headers)).statusCode).toBe(403);
+    expect((await send(other.headers)).statusCode).toBe(403);
     expect(posts).toHaveLength(0);
   });
 });
@@ -265,18 +322,26 @@ describe("live posting", () => {
     expect(log.rows).toEqual([{ action: "posting.live_on" }]);
   });
 
-  it("sends a feed post to Boutiqly's planner and marks it scheduled", async () => {
+  it("schedules a locked feed post in Boutiqly's planner, once", async () => {
     await goLive();
     const a = await upload();
     const id = await piece("post", [a.id], { instagram: "Hello" });
     const [entry] = await schedule(id, ["instagram"]);
-    const res = await approve(entry!.id);
-    expect(res.json().entry).toMatchObject({ status: "scheduled", sentFrames: 1, dryRun: false });
-    expect(posts).toHaveLength(1);
+    expect(await lockAndSend(entry!.id)).toMatchObject({ live: true, scheduled: 1 });
+    expect(await entryById(entry!.id)).toMatchObject({ status: "scheduled", sentFrames: 1 });
     expect(posts[0]!.body).toMatchObject({ accountIds: ["acc_ig"], status: "scheduled", scheduleDate: "2030-10-20T14:00:00.000Z" });
-    // A second click does nothing.
-    expect((await approve(entry!.id)).statusCode).toBe(400);
+    expect((await send()).json().scheduled).toBe(0);
     expect(posts).toHaveLength(1);
+    expect((await lock(entry!.id, false)).statusCode).toBe(400); // sent: change it in Boutiqly
+  });
+
+  it("schedules drafts for real once live posting is on", async () => {
+    const id = await piece("text", [], { threads: "hi" });
+    const [entry] = await schedule(id, ["threads"]);
+    await lockAndSend(entry!.id);
+    await goLive();
+    expect((await send()).json().scheduled).toBe(1);
+    expect(posts.map((p) => p.body.status)).toEqual(["draft", "scheduled"]);
   });
 
   it("sends a Story set as one app ping per frame, a minute apart", async () => {
@@ -284,7 +349,7 @@ describe("live posting", () => {
     const frames = [await upload("1.jpg"), await upload("2.jpg"), await upload("3.jpg")];
     const id = await piece("story_set", frames.map((f) => f.id), { instagram: "Swipe up for hours" });
     const [entry] = await schedule(id, ["instagram"]);
-    expect((await approve(entry!.id)).json().entry.status).toBe("scheduled");
+    await lockAndSend(entry!.id);
     expect(posts.map((p) => p.body.scheduleDate)).toEqual([
       "2030-10-20T14:00:00.000Z",
       "2030-10-20T14:01:00.000Z",
@@ -303,11 +368,12 @@ describe("live posting", () => {
     const id = await piece("story_set", frames.map((f) => f.id));
     const [entry] = await schedule(id, ["instagram"]);
     failPostNumber = 2;
-    const first = (await approve(entry!.id)).json().entry;
+    await lockAndSend(entry!.id);
+    const first = await entryById(entry!.id);
     expect(first).toMatchObject({ status: "needs_attention", sentFrames: 1 });
     expect(first.lastError).toBe("Frame 2 of 3 didn't go through: Instagram is busy, try again");
-    const second = (await approve(entry!.id)).json().entry;
-    expect(second).toMatchObject({ status: "scheduled", sentFrames: 3, lastError: null });
+    await send();
+    expect(await entryById(entry!.id)).toMatchObject({ status: "scheduled", sentFrames: 3, lastError: null });
     expect(posts).toHaveLength(3);
   });
 
@@ -316,7 +382,7 @@ describe("live posting", () => {
     const v = await upload("reel.mp4", "video/mp4");
     const id = await piece("reel", [v.id], { instagram: "Behind the counter" });
     const [entry] = await schedule(id, ["instagram"]);
-    await approve(entry!.id);
+    await lockAndSend(entry!.id);
     expect(posts[0]!.body).toMatchObject({ type: "reel", summary: "Behind the counter", instagramPostDetails: { type: "reel", publishViaPushNotification: true } });
   });
 
@@ -324,28 +390,16 @@ describe("live posting", () => {
     await goLive();
     const id = await piece("text", [], { threads: "new stock is in. come say hi" });
     const [entry] = await schedule(id, ["threads"]);
-    await approve(entry!.id);
+    await lockAndSend(entry!.id);
     expect(posts[0]!.body).toMatchObject({ accountIds: ["acc_th"], media: [], summary: "new stock is in. come say hi" });
   });
 
-  it("won't send something set in the past, or a caption over the limit", async () => {
-    await goLive();
-    const id = await piece("text", [], { threads: "x".repeat(501) });
-    const [late] = await schedule(id, ["threads"], "2020-01-01", "09:00");
-    expect((await approve(late!.id)).statusCode).toBe(400);
-    await t.pool.query("UPDATE calendar_entries SET scheduled_at = '2030-01-01'");
-    const res = await approve(late!.id);
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error).toContain("limit is 500");
-    expect(posts).toHaveLength(0);
-  });
-
-  it("lets team members approve but not people without access", async () => {
+  it("won't send something whose time has passed", async () => {
     await goLive();
     const id = await piece("text", [], { threads: "hi" });
-    const [entry] = await schedule(id, ["threads"]);
-    const other = await signInAs(t.app, people.other);
-    expect((await approve(entry!.id, other.headers)).statusCode).toBe(403);
+    const [late] = await schedule(id, ["threads"], "2020-01-01", "09:00");
+    const res = await lockAndSend(late!.id);
+    expect(res.problems[0].message).toContain("time has passed");
     expect(posts).toHaveLength(0);
   });
 });
@@ -355,8 +409,7 @@ describe("after it's sent", () => {
     await goLive();
     const id = await piece("text", [], { threads: "one", facebook: "one" });
     const [a, b] = await schedule(id, ["threads", "facebook"]);
-    await approve(a!.id);
-    await approve(b!.id);
+    await lockAndSend(a!.id, b!.id);
     postStatus.set("post_1", "published");
     postStatus.set("post_2", "failed");
     // Pretend the posting time has passed.
@@ -371,7 +424,7 @@ describe("after it's sent", () => {
     const id = await piece("reel", [v.id], { tiktok: "POV: new arrivals" });
     const [entry] = await schedule(id, ["tiktok"]);
     expect(entry!.route).toBe("pack");
-    expect((await approve(entry!.id)).json().entry.status).toBe("approved");
+    await lock(entry!.id);
     const res = await t.app.inject({ url: `/api/calendar/${entry!.id}/pack`, headers: agency.headers });
     expect(res.headers["content-type"]).toBe("application/zip");
     const files = unzipSync(new Uint8Array(res.rawPayload));
@@ -388,7 +441,8 @@ describe("after it's sent", () => {
     await goLive();
     const id = await piece("text", [], { threads: "hi" });
     const [entry] = await schedule(id, ["threads"]);
-    await approve(entry!.id);
+    await lockAndSend(entry!.id);
+    await t.pool.query("UPDATE calendar_entries SET locked_at = NULL"); // even if somehow unlocked
     expect((await t.app.inject({ method: "PATCH", url: `/api/calendar/${entry!.id}`, headers: agency.headers, payload: { date: "2030-11-01", time: "10:00" } })).statusCode).toBe(400);
     expect((await t.app.inject({ method: "DELETE", url: `/api/calendar/${entry!.id}`, headers: agency.headers })).statusCode).toBe(400);
   });

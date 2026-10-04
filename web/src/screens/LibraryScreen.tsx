@@ -46,7 +46,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
       {pieces?.length === 0 && (
         <div className="card empty">
           <p>No posts yet.</p>
-          <p className="muted">Click "New post" to upload photos or videos and write captions. Claude will add posts here too, from Milestone 3.</p>
+          <p className="muted">Click "New post" to upload photos or videos and write captions. Or ask Claude to make some.</p>
         </div>
       )}
 
@@ -61,12 +61,16 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
                 {p.assets.length > 1 ? ` · ${p.assets.length} files` : ""}
               </span>
               <span className="chips">
-                {p.onCalendar.length === 0 && <span className="muted small">Not on the calendar</span>}
-                {p.onCalendar.map((c, i) => (
-                  <span key={i} className="chip-line">
-                    <span className="small">{channelName(c.channel)}</span> <StatusChip status={c.status} />
-                  </span>
-                ))}
+                {!p.approval && <span className="status-chip status-suggested">Suggested</span>}
+                {p.approval?.channels.map((ch) => {
+                  const e = p.onCalendar.find((x) => x.channel === ch);
+                  return (
+                    <span key={ch} className="chip-line">
+                      <span className="small">{channelName(ch)}</span>{" "}
+                      {e ? <StatusChip status={e.status} locked={e.locked} /> : <span className="status-chip status-approved">Approved</span>}
+                    </span>
+                  );
+                })}
               </span>
             </div>
           </button>

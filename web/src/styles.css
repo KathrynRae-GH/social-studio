@@ -305,3 +305,24 @@ h3 { font-size: 16px; }
 .product-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex: none; background: var(--border); }
 .product-name { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .product-name a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+
+/* Post editor: networks to post to, the caption, approve */
+.preview-layout.no-media { grid-template-columns: 1fr; }
+.net-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.net-tab { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; background: var(--card); }
+.net-tab.active { border-color: var(--deep-forest); background: var(--pale-mint); }
+.net-tab input { margin: 0; accent-color: var(--green); width: 16px; height: 16px; }
+.net-tab button { background: none; border: 0; padding: 4px 8px 4px 2px; font: inherit; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; }
+.caption-edit textarea { min-height: 220px; line-height: 1.5; }
+.approve-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.approve-box p { margin: 0; flex-basis: 100%; }
+details.schedule summary { cursor: pointer; font-weight: 600; }
+
+/* Calendar: plan, lock, send */
+.plan-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; }
+.plan-step h2 { font-size: 17px; margin: 0 0 4px; }
+.plan-step p { margin: 0 0 10px; }
+.plan-wide { grid-column: 1 / -1; margin: 0; }
+.plan-wide ul { margin: 6px 0 0; padding-left: 18px; }
+.entry-card.locked { box-shadow: inset 4px 0 0 var(--deep-forest); }
+@media (max-width: 820px) { .plan-bar { grid-template-columns: 1fr; } }

@@ -21,6 +21,8 @@ const KIND_HELP: Record<Kind, string> = {
   google_update: "An update for Google Business Profile, with an optional link.",
 };
 
+const DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
 interface Props {
   shopName?: string;
   piece: PieceView | null;
@@ -31,7 +33,9 @@ interface Props {
 
 const emptyCaption: CaptionView = { text: "", altText: "", status: "draft" };
 
-export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopName = "" }: Props) {
+const sameSet = (a: Set<string>, b: string[]) => a.size === b.length && b.every((x) => a.has(x));
+
+export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Props) {
   const [piece, setPiece] = useState<PieceView | null>(initial);
   const [kind, setKind] = useState<Kind>(initial?.kind ?? "post");
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -39,8 +43,13 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
   const [files, setFiles] = useState<AssetView[]>(initial?.assets ?? []);
   const [captions, setCaptions] = useState<Record<string, CaptionView>>(initial?.captions ?? {});
   const [dirty, setDirty] = useState<Set<string>>(new Set());
+  const [fieldsDirty, setFieldsDirty] = useState(false);
   const channels = useMemo(() => channelsFor(kind), [kind]);
   const [active, setActive] = useState<string>(channels[0]?.id ?? "instagram");
+  // The networks this post goes to. Before approval: every network with a caption.
+  const [ticked, setTicked] = useState<Set<string>>(
+    () => new Set(initial?.approval?.channels ?? Object.entries(initial?.captions ?? {}).filter(([, c]) => c.text.trim()).map(([id]) => id)),
+  );
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -51,11 +60,25 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
 
   const activeChannel = channels.find((c) => c.id === active) ?? channels[0];
   const current = (activeChannel && captions[activeChannel.id]) || emptyCaption;
+  const approval = piece?.approval ?? null;
+  const tickedHere = channels.filter((c) => ticked.has(c.id)).map((c) => c.id);
+  const changedSinceApproval = !!approval && (!sameSet(new Set(tickedHere), approval.channels) || dirty.size > 0 || fieldsDirty);
+  const lockedOrSent = (piece?.onCalendar ?? []).some((e) => e.locked || e.status === "scheduled" || e.status === "posted");
 
   function editCaption(changes: Partial<CaptionView>) {
     if (!activeChannel) return;
     setCaptions((c) => ({ ...c, [activeChannel.id]: { ...(c[activeChannel.id] ?? emptyCaption), ...changes } }));
     setDirty((d) => new Set(d).add(activeChannel.id));
+    if (changes.text?.trim()) setTicked((t) => (approval ? t : new Set(t).add(activeChannel.id)));
+  }
+
+  function toggleTick(id: string, on: boolean) {
+    setTicked((t) => {
+      const n = new Set(t);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
   }
 
   function copyToAll() {
@@ -78,6 +101,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
       for (const file of Array.from(list)) {
         const { asset } = await api.upload(file);
         setFiles((f) => [...f, asset]);
+        setFieldsDirty(true);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -87,6 +111,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
   }
 
   function moveFile(i: number, by: number) {
+    setFieldsDirty(true);
     setFiles((f) => {
       const next = [...f];
       const [item] = next.splice(i, 1);
@@ -95,7 +120,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
     });
   }
 
-  async function save(): Promise<PieceView | null> {
+  async function save(quiet = false): Promise<PieceView | null> {
     setError("");
     setMessage("");
     setBusy("Saving…");
@@ -107,9 +132,10 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
         if (c) saved = (await api.setCaption(saved.id, ch, c)).piece;
       }
       setDirty(new Set());
+      setFieldsDirty(false);
       setPiece(saved);
       onSaved(saved);
-      setMessage("Saved.");
+      if (!quiet) setMessage("Saved.");
       return saved;
     } catch (e) {
       setError((e as Error).message);
@@ -119,8 +145,42 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
     }
   }
 
+  async function approve() {
+    const saved = await save(true);
+    if (!saved) return;
+    setBusy("Approving…");
+    try {
+      const { piece: done } = await api.approvePiece(saved.id, tickedHere);
+      setPiece(done);
+      setCaptions(done.captions);
+      onSaved(done);
+      setMessage("Approved. Use Plan my calendar on the Calendar to put it on a date, or add it yourself below.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function unapprove() {
+    if (!piece) return;
+    setError("");
+    setBusy("Undoing the approval…");
+    try {
+      const { piece: done } = await api.unapprovePiece(piece.id);
+      setPiece(done);
+      setCaptions(done.captions);
+      onSaved(done);
+      setMessage("Back to Suggested. Its calendar spots were removed.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function schedule() {
-    const saved = await save();
+    const saved = await save(true);
     if (!saved || picked.size === 0) return;
     setBusy("Adding to the calendar…");
     try {
@@ -128,10 +188,12 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
       setMessage(
         `Added to the calendar for ${friendlyDate(when.date)} at ${friendlyTime(when.time)}: ` +
           entries.map((e) => `${channels.find((c) => c.id === e.channel)?.name} (${ROUTE_LABELS[e.route].toLowerCase()})`).join(", ") +
-          ". Approve it on the Calendar.",
+          ". Lock it on the Calendar when you're happy with the date.",
       );
       setPicked(new Set());
-      onSaved((await api.updatePiece(saved.id, {})).piece);
+      const fresh = (await api.updatePiece(saved.id, {})).piece;
+      setPiece(fresh);
+      onSaved(fresh);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -140,6 +202,8 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
   }
 
   const over = activeChannel ? current.text.length > activeChannel.captionLimit : false;
+  const placed = new Set((piece?.onCalendar ?? []).map((e) => e.channel));
+  const canPlace = (approval?.channels ?? []).filter((c) => !placed.has(c));
 
   return (
     <div className="overlay" role="dialog" aria-label={piece ? "Edit post" : "New post"}>
@@ -149,27 +213,93 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
           <button className="btn-link" onClick={onClose}>Close</button>
         </div>
 
-        <PostPreview
-          files={files}
-          channels={channels.map((c) => ({ id: c.id, name: c.name }))}
-          captions={Object.fromEntries(Object.entries(captions).map(([k, v]) => [k, v.text]))}
-          active={activeChannel?.id ?? ""}
-          onActive={setActive}
-          shopName={shopName}
-        >
+        <PostPreview files={files}>
+          <div className="net-tabs" role="tablist" aria-label="Caption for">
+            {channels.map((c) => (
+              <span key={c.id} className={c.id === activeChannel?.id ? "net-tab active" : "net-tab"}>
+                <input
+                  type="checkbox"
+                  checked={ticked.has(c.id)}
+                  onChange={(e) => toggleTick(c.id, e.target.checked)}
+                  aria-label={`Post to ${c.name}`}
+                  title={`Post to ${c.name}`}
+                />
+                <button role="tab" aria-selected={c.id === activeChannel?.id} onClick={() => setActive(c.id)}>
+                  {c.name}
+                  {!captions[c.id]?.text?.trim() ? " ·" : ""}
+                </button>
+              </span>
+            ))}
+          </div>
+          <p className="muted small">Tick the networks to post to. Click a name to see and edit its caption.</p>
+
+          {activeChannel && (
+            <div className="caption-edit">
+              <label className="field">
+                <span>{activeChannel.name} {kind === "text" ? "text" : "caption"}</span>
+                <textarea rows={10} value={current.text} onChange={(e) => editCaption({ text: e.target.value })} placeholder={`Write the ${activeChannel.name} caption…`} />
+              </label>
+              <div className="caption-meta">
+                <span className={over ? "count over" : "count"}>
+                  {current.text.length} / {activeChannel.captionLimit}
+                </span>
+                {channels.length > 1 && current.text && (
+                  <button className="btn-link small" onClick={copyToAll}>Use for networks with no caption yet</button>
+                )}
+              </div>
+              {kind !== "text" && (
+                <label className="field">
+                  <span>Alt text (describes the image for screen readers)</span>
+                  <input value={current.altText} onChange={(e) => editCaption({ altText: e.target.value })} maxLength={2000} />
+                </label>
+              )}
+            </div>
+          )}
+
+          <div className="approve-box">
+            {approval && (
+              <p className="small">
+                <span className="status-chip status-approved">Approved</span>{" "}
+                by {approval.by || "your team"} on {DAY.format(new Date(approval.at))} for{" "}
+                {approval.channels.map((id) => channels.find((c) => c.id === id)?.name ?? id).join(", ")}.
+              </p>
+            )}
+            {(!approval || changedSinceApproval) && (
+              <button className="btn-primary" disabled={!!busy || tickedHere.length === 0} onClick={() => void approve()}>
+                {approval ? "Approve changes" : `Approve for ${tickedHere.length} network${tickedHere.length === 1 ? "" : "s"}`}
+              </button>
+            )}
+            {approval && !lockedOrSent && (
+              <button className="btn-link small" disabled={!!busy} onClick={() => void unapprove()}>Undo approval</button>
+            )}
+            {!approval && <p className="muted small">Approved posts go on the calendar with one click: Plan my calendar.</p>}
+          </div>
+
           {piece && <Verdict pieceId={piece.id} />}
         </PostPreview>
 
+        {busy && <p className="notice">{busy}</p>}
+        {message && <p className="notice">{message}</p>}
+        <ErrorNote message={error} />
+
+        <h3>Details</h3>
         <div className="field-row">
           <label className="field">
             <span>Type</span>
-            <select value={kind} onChange={(e) => { setKind(e.target.value as Kind); setActive(channelsFor(e.target.value as Kind)[0]?.id ?? ""); }}>
+            <select
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value as Kind);
+                setActive(channelsFor(e.target.value as Kind)[0]?.id ?? "");
+                setFieldsDirty(true);
+              }}
+            >
               {KINDS.map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
             </select>
           </label>
           <label className="field grow">
             <span>Name (just for you)</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Fall sale carousel" maxLength={200} />
+            <input value={title} onChange={(e) => { setTitle(e.target.value); setFieldsDirty(true); }} placeholder="Fall sale carousel" maxLength={200} />
           </label>
         </div>
         <p className="muted small">{KIND_HELP[kind]}</p>
@@ -184,7 +314,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
                     <span>{i + 1}</span>
                     <button className="btn-link small" onClick={() => moveFile(i, -1)} disabled={i === 0} aria-label="Move earlier">←</button>
                     <button className="btn-link small" onClick={() => moveFile(i, 1)} disabled={i === files.length - 1} aria-label="Move later">→</button>
-                    <button className="btn-link small" onClick={() => setFiles((fs) => fs.filter((_, j) => j !== i))}>Remove</button>
+                    <button className="btn-link small" onClick={() => { setFiles((fs) => fs.filter((_, j) => j !== i)); setFieldsDirty(true); }}>Remove</button>
                   </figcaption>
                 </figure>
               ))}
@@ -196,92 +326,44 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
           </section>
         )}
 
-        {NEEDS_LINK.includes(kind) && (
+        {(NEEDS_LINK.includes(kind) || link) && (
           <label className="field">
             <span>Link</span>
-            <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://" />
+            <input value={link} onChange={(e) => { setLink(e.target.value); setFieldsDirty(true); }} placeholder="https://" />
           </label>
         )}
 
-        <section className="captions">
-          <div className="channel-tabs" role="tablist">
-            {channels.map((c) => (
-              <button
-                key={c.id}
-                role="tab"
-                aria-selected={c.id === activeChannel?.id}
-                className={c.id === activeChannel?.id ? "chip-tab active" : "chip-tab"}
-                onClick={() => setActive(c.id)}
-              >
-                {c.name}
-                {captions[c.id]?.status === "final" ? " ✓" : captions[c.id]?.text ? " •" : ""}
-              </button>
-            ))}
-          </div>
-          {activeChannel && (
-            <>
+        {approval && canPlace.length > 0 && (
+          <details className="schedule card-inset">
+            <summary>Put it on the calendar yourself</summary>
+            <div className="channel-checks">
+              {canPlace.map((id) => (
+                <label key={id} className="check">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(id)}
+                    onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(id); else n.delete(id); return n; })}
+                  />
+                  {channels.find((c) => c.id === id)?.name ?? id}
+                </label>
+              ))}
+            </div>
+            <div className="field-row">
               <label className="field">
-                <span>{activeChannel.name} {kind === "text" ? "text" : "caption"}</span>
-                <textarea rows={6} value={current.text} onChange={(e) => editCaption({ text: e.target.value })} />
+                <span>Date</span>
+                <input type="date" value={when.date} onChange={(e) => setWhen((w) => ({ ...w, date: e.target.value }))} />
               </label>
-              <div className="caption-meta">
-                <span className={over ? "count over" : "count"}>
-                  {current.text.length} / {activeChannel.captionLimit}
-                </span>
-                <label className="check">
-                  <input type="checkbox" checked={current.status === "final"} onChange={(e) => editCaption({ status: e.target.checked ? "final" : "draft" })} />
-                  Final
-                </label>
-                {channels.length > 1 && current.text && (
-                  <button className="btn-link small" onClick={copyToAll}>Use for channels with no caption yet</button>
-                )}
-              </div>
-              {kind !== "text" && (
-                <label className="field">
-                  <span>Alt text (describes the image for people using screen readers)</span>
-                  <input value={current.altText} onChange={(e) => editCaption({ altText: e.target.value })} maxLength={2000} />
-                </label>
-              )}
-              <p className="muted small">Sizes: {activeChannel.sizes}</p>
-            </>
-          )}
-        </section>
-
-        <section className="schedule card-inset">
-          <h3>Add to the calendar</h3>
-          <div className="channel-checks">
-            {channels.map((c) => (
-              <label key={c.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={picked.has(c.id)}
-                  onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(c.id); else n.delete(c.id); return n; })}
-                />
-                {c.name}
+              <label className="field">
+                <span>Time ({timezone.replace("_", " ")})</span>
+                <input type="time" value={when.time} onChange={(e) => setWhen((w) => ({ ...w, time: e.target.value }))} />
               </label>
-            ))}
-          </div>
-          <div className="field-row">
-            <label className="field">
-              <span>Date</span>
-              <input type="date" value={when.date} onChange={(e) => setWhen((w) => ({ ...w, date: e.target.value }))} />
-            </label>
-            <label className="field">
-              <span>Time ({timezone.replace("_", " ")})</span>
-              <input type="time" value={when.time} onChange={(e) => setWhen((w) => ({ ...w, time: e.target.value }))} />
-            </label>
-          </div>
-        </section>
-
-        {busy && <p className="notice">{busy}</p>}
-        {message && <p className="notice">{message}</p>}
-        <ErrorNote message={error} />
+              <button className="btn-secondary small" onClick={() => void schedule()} disabled={!!busy || picked.size === 0}>Add to calendar</button>
+            </div>
+          </details>
+        )}
 
         <div className="sheet-actions">
           <button className="btn-secondary" onClick={() => void save()} disabled={!!busy}>Save</button>
-          <button className="btn-secondary" onClick={() => void schedule()} disabled={!!busy || picked.size === 0}>
-            Save and add to calendar
-          </button>
           {piece && (
             <button className="btn-link" onClick={async () => { await api.updatePiece(piece.id, { archived: true }); onClose(); }}>
               Archive

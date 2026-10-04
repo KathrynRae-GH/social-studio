@@ -10,8 +10,11 @@ import type { BoutiqlyClient } from "../boutiqly/api.ts";
 import { addAsset, createPiece, deleteIdea, getPiece, listIdeas, listPieces, saveIdea, setCaption, updatePiece } from "../library.ts";
 import {
   addEntries,
-  approveEntry,
-  sendDraft,
+  approvePiece,
+  unapprovePiece,
+  lockAll,
+  lockEntry,
+  sendLocked,
   brandTimezone,
   entryForPack,
   getCalendar,
@@ -97,6 +100,18 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
   }));
 
   // ---- Calendar ----
+  // Approving a post for the networks the owner ticked (people only, never Claude).
+  app.post<{ Params: { id: string }; Body: Body }>("/api/pieces/:id/approve", async (req) => {
+    const viewer = await viewerFrom(req);
+    await approvePiece(calendar, viewer, req.params.id, req.body ?? {});
+    return { piece: await getPiece(db, viewer, req.params.id) };
+  });
+  app.delete<{ Params: { id: string } }>("/api/pieces/:id/approve", async (req) => {
+    const viewer = await viewerFrom(req);
+    await unapprovePiece(calendar, viewer, req.params.id);
+    return { piece: await getPiece(db, viewer, req.params.id) };
+  });
+
   app.get<{ Querystring: { from?: string; to?: string } }>("/api/calendar", async (req) =>
     getCalendar(calendar, await viewerFrom(req), req.query),
   );
@@ -110,12 +125,12 @@ export async function contentRoutes(app: FastifyInstance, deps: Deps) {
     await removeEntry(calendar, await viewerFrom(req), req.params.id);
     return { ok: true };
   });
-  app.post<{ Params: { id: string } }>("/api/calendar/:id/approve", async (req) =>
-    approveEntry(calendar, await viewerFrom(req), req.params.id),
-  );
-  app.post<{ Params: { id: string } }>("/api/calendar/:id/draft", async (req) =>
-    sendDraft(calendar, await viewerFrom(req), req.params.id),
-  );
+  // Lock in place (or unlock); lock everything planned; send locked to Boutiqly.
+  app.post<{ Params: { id: string }; Body: Body }>("/api/calendar/:id/lock", async (req) => ({
+    entry: await lockEntry(calendar, await viewerFrom(req), req.params.id, req.body?.locked !== false),
+  }));
+  app.post("/api/calendar/lock-all", async (req) => ({ locked: await lockAll(calendar, await viewerFrom(req)) }));
+  app.post("/api/calendar/send", async (req) => sendLocked(calendar, await viewerFrom(req)));
   app.post<{ Params: { id: string } }>("/api/calendar/:id/posted", async (req) => ({
     entry: await markPosted(calendar, await viewerFrom(req), req.params.id),
   }));

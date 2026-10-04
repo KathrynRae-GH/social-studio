@@ -72,6 +72,7 @@ const RULES = `## Rules you always follow
 - Licensed stock is never presented as a customer.
 - Products: when the shop has a connected online store, list_products gives its real product names, descriptions and links. Use only those names and links, never made-up ones. Never mention prices in posts or captions (the owner's rule), even if you find one.
 - You never approve, schedule or post anything, and never mark a caption Final. Your pieces land as Suggested for the owner to review. Calendar and caption changes go through propose_change for the owner to apply.
+- How posts reach the calendar: the owner approves a post in the Library for the networks they tick; then "Plan my calendar" on the Calendar places every approved post; the owner locks the dates and sends locked posts to Boutiqly. You can only propose calendar spots for approved posts and their approved networks, never move locked entries, and can't change approved posts.
 - Write in the shop's voice from its notes. Plain, warm and specific. Avoid: empower, thrive, streamline, seamless, elevate, unlock, solution.`;
 
 function designGuide(style: StyleSetView): string {
@@ -381,10 +382,11 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
             frames: r.assetIds.length,
             frame_asset_ids: r.assetIds,
             has_design: !!r.design,
+            approved_for: r.approvedAt ? r.approvedChannels : null,
             captions: Object.fromEntries(caps.filter((c) => c.pieceId === r.id).map((c) => [c.channel, c.text.slice(0, 300)])),
             on_calendar: entries
               .filter((e) => e.pieceId === r.id)
-              .map((e) => ({ entry_id: e.id, channel: e.channel, status: e.status, ...utcToZoned(e.scheduledAt, tz) })),
+              .map((e) => ({ entry_id: e.id, channel: e.channel, status: e.status === "approved" ? "on_calendar" : e.status, locked: !!e.lockedAt, ...utcToZoned(e.scheduledAt, tz) })),
           })),
         ),
       };
@@ -537,6 +539,7 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
         if (!isUuid(pieceId)) return { content: "piece_id isn't a valid id.", isError: true };
         const [p] = await db.select().from(pieces).where(and(eq(pieces.id, pieceId), eq(pieces.brandId, brand.id)));
         if (!p) return { content: "That piece isn't in this shop's library.", isError: true };
+        if (p.approvedAt) return { content: "That piece is already approved, so it can't be changed. Make a new piece instead, or ask the owner to undo the approval.", isError: true };
         const locked = await db
           .select({ id: calendarEntries.id })
           .from(calendarEntries)
@@ -639,6 +642,12 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
       if (input.kind === "set_caption" && (!input.piece_id || !input.channel || input.text === undefined)) problems.push("set_caption needs piece_id, channel and text.");
       if (input.piece_id && !isUuid(input.piece_id)) problems.push("piece_id isn't a valid id.");
       if (input.entry_id && !isUuid(input.entry_id)) problems.push("entry_id isn't a valid id.");
+      if (!problems.length && input.kind === "add_to_calendar") {
+        const [p] = await db.select().from(pieces).where(and(eq(pieces.id, input.piece_id!), eq(pieces.brandId, brand.id)));
+        if (!p) problems.push("That piece isn't in this shop's library.");
+        else if (!p.approvedAt) problems.push("That piece isn't approved yet. Ask the owner to approve it in the Library first; then Plan my calendar places it.");
+        else if (input.channels!.some((c) => !p.approvedChannels.includes(c))) problems.push(`It's only approved for ${p.approvedChannels.join(", ")}.`);
+      }
       if (problems.length) return { content: problems.join(" "), isError: true };
       const [row] = await db
         .insert(proposals)

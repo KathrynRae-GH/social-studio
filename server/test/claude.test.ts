@@ -323,14 +323,76 @@ describe("designing with Claude", () => {
     const make = await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title: "Hi" } });
     const pieceId = make.json().piece.id;
     await t.app.inject({ method: "PUT", url: `/api/pieces/${pieceId}/captions/threads`, headers: agency.headers, payload: { text: "hi", status: "final" } });
-    const [entry] = (await t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId, channels: ["threads"], date: "2030-10-20", time: "09:00" } })).json().entries;
-    await t.pool.query("UPDATE calendar_entries SET status = 'approved' WHERE id = $1", [entry.id]);
+    await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/approve`, headers: agency.headers, payload: { channels: ["threads"] } });
     script = [useTool("design_piece", { piece_id: pieceId, kind: "text", title: "Changed", captions: { threads: { text: "changed" } } }), say("ok")];
     await askRaw("Change it");
     const toolResult = (calls[1]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(toolResult.is_error).toBe(true);
     const cap = await t.pool.query("SELECT text, status FROM captions WHERE piece_id = $1", [pieceId]);
     expect(cap.rows).toEqual([{ text: "hi", status: "final" }]);
+  });
+});
+
+describe("plan my calendar", () => {
+  async function approvedText(title: string, channels: string[]) {
+    const id = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title } })).json().piece.id as string;
+    for (const ch of channels) await t.app.inject({ method: "PUT", url: `/api/pieces/${id}/captions/${ch}`, headers: agency.headers, payload: { text: `${title} on ${ch}` } });
+    await t.app.inject({ method: "POST", url: `/api/pieces/${id}/approve`, headers: agency.headers, payload: { channels } });
+    return id;
+  }
+  const plan = (weeks: number, more = false) => t.app.inject({ method: "POST", url: "/api/calendar/plan", headers: agency.headers, payload: { weeks, continue: more } });
+  const day = (n: number) => {
+    const d = new Date(Date.now() + n * 86_400_000);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(d);
+  };
+
+  it("places approved posts in the window, checks every spot, and leaves the rest alone", async () => {
+    await claudeOn();
+    const a = await approvedText("Fall drop", ["threads", "facebook"]);
+    const b = await approvedText("Shop tour", ["threads"]);
+    script = [
+      say(
+        JSON.stringify({
+          placements: [
+            { piece_id: a, channel: "threads", date: day(3), time: "11:00" },
+            { piece_id: a, channel: "facebook", date: day(3), time: "11:00" },
+            { piece_id: b, channel: "threads", date: day(400), time: "11:00" }, // outside the window
+            { piece_id: "not-a-piece", channel: "threads", date: day(5), time: "11:00" },
+          ],
+          not_placed: [],
+          note: "Fall drop first, while it's new.",
+        }),
+      ),
+    ];
+    const res = await plan(4);
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ placed: 2, from: day(1), to: day(28), note: "Fall drop first, while it's new." });
+    expect(body.notPlaced).toEqual([{ pieceId: b, title: "Shop tour", reason: expect.stringContaining("outside the plan") }]);
+    const rows = await t.pool.query("SELECT channel, status, locked_at FROM calendar_entries ORDER BY channel");
+    expect(rows.rows).toEqual([
+      { channel: "facebook", status: "approved", locked_at: null },
+      { channel: "threads", status: "approved", locked_at: null },
+    ]);
+    // Claude saw only what still needs a spot, plus the shop's time zone and window.
+    const sent = JSON.parse((calls[0]!.messages[0]!.content as { text: string }[])[0]!.text);
+    expect(sent.to_place.map((p: { piece_id: string }) => p.piece_id).sort()).toEqual([a, b].sort());
+    expect(sent.window).toEqual({ from: day(1), to: day(28) });
+    const ledger = await t.pool.query("SELECT purpose FROM usage_ledger");
+    expect(ledger.rows).toEqual([{ purpose: "plan_calendar" }]);
+  });
+
+  it("plans the 4 weeks after the current plan, and says when there's nothing to plan", async () => {
+    await claudeOn();
+    const a = await approvedText("One", ["threads"]);
+    await t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId: a, channels: ["threads"], date: day(20), time: "09:00" } });
+    expect((await plan(4)).json()).toMatchObject({ placed: 0, note: expect.stringContaining("Nothing new to plan") });
+    expect(calls).toHaveLength(0);
+
+    await approvedText("Two", ["threads"]);
+    script = [say(JSON.stringify({ placements: [], not_placed: [], note: "" }))];
+    expect((await plan(4, true)).json()).toMatchObject({ from: day(21), to: day(48) });
+    expect((await plan(5)).statusCode).toBe(400);
   });
 });
 
@@ -374,10 +436,16 @@ describe("proposals", () => {
     await claudeOn();
     const make = await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title: "Hi" } });
     const pieceId = make.json().piece.id;
-    script = [
-      useTool("propose_change", { kind: "add_to_calendar", summary: "Post it on Threads Tue at 9", piece_id: pieceId, channels: ["threads"], date: "2030-10-22", time: "09:00" }),
-      say("Tap Apply if that works"),
-    ];
+    await t.app.inject({ method: "PUT", url: `/api/pieces/${pieceId}/captions/threads`, headers: agency.headers, payload: { text: "hi" } });
+    const propose = useTool("propose_change", { kind: "add_to_calendar", summary: "Post it on Threads Tue at 9", piece_id: pieceId, channels: ["threads"], date: "2030-10-22", time: "09:00" });
+    // Not approved yet: Claude is told so, and nothing is proposed.
+    script = [propose, say("Approve it first")];
+    const before = await askRaw("Schedule it");
+    expect(before.events.some((e) => e.type === "proposal")).toBe(false);
+    expect(JSON.stringify(calls[1]!.messages.at(-1)!.content)).toContain("isn't approved yet");
+
+    await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/approve`, headers: agency.headers, payload: { channels: ["threads"] } });
+    script = [propose, say("Tap Apply if that works")];
     const { events } = await askRaw("Schedule it");
     const proposal = events.find((e) => e.type === "proposal").proposal;
     expect(proposal).toMatchObject({ kind: "add_to_calendar", status: "open" });
@@ -389,7 +457,7 @@ describe("proposals", () => {
     const apply = await t.app.inject({ method: "POST", url: `/api/proposals/${proposal.id}/apply`, headers: agency.headers });
     expect(apply.json().proposal.status).toBe("applied");
     const entries = await t.pool.query("SELECT channel, status FROM calendar_entries");
-    expect(entries.rows).toEqual([{ channel: "threads", status: "suggested" }]);
+    expect(entries.rows).toEqual([{ channel: "threads", status: "approved" }]);
     expect((await t.app.inject({ method: "POST", url: `/api/proposals/${proposal.id}/apply`, headers: agency.headers })).statusCode).toBe(400);
   });
 });

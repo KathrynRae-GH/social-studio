@@ -245,7 +245,8 @@ export type EntryStatus = "suggested" | "approved" | "scheduled" | "posted" | "n
 
 export const STATUS_LABELS: Record<EntryStatus, string> = {
   suggested: "Suggested",
-  approved: "Approved",
+  approved: "On calendar", // an approved post placed on a date
+
   scheduled: "Scheduled",
   posted: "Posted",
   needs_attention: "Needs attention",
