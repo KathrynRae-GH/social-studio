@@ -11,13 +11,13 @@ import { assets, calendarEntries, captions, conversationMessages, conversations,
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "../brands.ts";
 import { callClaude, ClaudePausedError, type ClaudeDeps } from "./client.ts";
 import { tryWithLock } from "../jobs.ts";
-import { assetDetail, inspirationFor, ownAsset, tagAsset } from "../assets.ts";
+import { assetDetail, inspirationFor, ownAsset, tagAsset, usableInDesign } from "../assets.ts";
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
 import { CHANNELS, KIND_LABELS, channel, channelsFor, type Kind } from "../../../shared/channels.ts";
-import { LAYOUTS, SIZES, brandVariables, type Design, type StyleSetView } from "../../../shared/design.ts";
+import { LAYOUTS, LAYOUT_KINDS, SIZES, brandVariables, layoutKind, type Design, type StyleSetView } from "../../../shared/design.ts";
 import { utcToZoned, zonedToUtc } from "../../../shared/time.ts";
 import type { AskEvent, ChatItem, ConversationSummary, ConversationView, ProposalView } from "../../../shared/ask.ts";
 
@@ -105,7 +105,10 @@ Graphic language (draw it in code, matched to the shop's vibe)
 - Photo treatments: bold crops (close-ups beat wide shots), arch or circle masks, duotone with mix-blend-mode, a sticker-style cutout frame, a photo grid, a photo placed on a colored block with a shadow.
 
 Variety (posts must not look alike)
-- Every design names a layout family. Choose deliberately, and never repeat the layout family of the shop's last few posts (they're described in each message) unless the owner asks:
+- Posts come in three kinds, and each new post must be a different kind from the one before (the last post is described in each message), unless the owner asks for the same:
+${Object.entries(LAYOUT_KINDS).map(([, k]) => `  - ${k.label}: ${k.layouts.join(", ")}`).join("\n")}
+  For example, after a type poster make a full-bleed photo post, then a collage.
+- Every design names its layout family, and never repeats the family of the last three posts:
 ${Object.entries(LAYOUTS).map(([k, v]) => `  - ${k}: ${v}`).join("\n")}
 - Also vary placement: if recent posts put a starburst top right and a circle photo bottom right, put the focal point and graphics somewhere else this time (left, center, bottom band, full-bleed). Vary the background (light vs. saturated vs. photo vs. pattern), the headline position and the graphic motifs themselves.
 - Record where the main graphics sit in "motifs" so the next post can avoid repeating them.
@@ -448,6 +451,21 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
         }
         if (!input.piece_id && !input.design.owner_asked_for_this_layout) {
           const recent = await recentDesigns(db, brand, RECENT_LAYOUTS_BLOCKED);
+          // The kind of post switches from the last one (graphics → photo → several photos).
+          const lastKind = layoutKind(recent[0]?.design.layout);
+          const thisKind = layoutKind(input.design.layout);
+          if (lastKind && thisKind === lastKind) {
+            const usablePhotos = (await db.select().from(assets).where(and(eq(assets.brandId, brand.id), eq(assets.purpose, "content"), like(assets.mime, "image/%"))))
+              .filter((a) => a.madeBy !== "render" && usableInDesign(a).ok).length;
+            const photoKindsPossible = usablePhotos > 0;
+            if (lastKind !== "graphic" || photoKindsPossible) {
+              const others = Object.entries(LAYOUT_KINDS).filter(([k]) => k !== lastKind && (photoKindsPossible || k === "graphic"));
+              return {
+                content: `Nothing was saved. The last post ("${recent[0]!.title}") was ${LAYOUT_KINDS[lastKind]!.label} (${recent[0]!.design.layout}). Make this one a different kind: ${others.map(([, k]) => `${k.label} (${k.layouts.join(", ")})`).join("; or ")}.`,
+                isError: true,
+              };
+            }
+          }
           const clash = recent.find((r) => r.design.layout === input.design!.layout);
           if (clash) {
             return {
@@ -705,7 +723,7 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
         type: "text",
         text:
           "The shop's most recent designs (newest first). Make new posts clearly different from these in layout family, composition and where graphics sit:\n" +
-          recent.map((r, i) => `${i + 1}. "${r.title}" (${r.kind}): layout ${r.design.layout ?? "unknown"}; motifs: ${r.design.motifs ?? "not recorded"}`).join("\n"),
+          recent.map((r, i) => `${i + 1}. "${r.title}" (${r.kind}): layout ${r.design.layout ?? "unknown"} (${LAYOUT_KINDS[layoutKind(r.design.layout) ?? ""]?.label ?? "kind unknown"}); motifs: ${r.design.motifs ?? "not recorded"}`).join("\n"),
       });
       const firstFrames = recent.slice(0, RECENT_IMAGES).map((r) => r.assetIds[0]).filter((id): id is string => !!id);
       const urls = firstFrames.length ? await deps.db.select({ id: assets.id, url: assets.url }).from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, firstFrames))) : [];
