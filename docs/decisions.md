@@ -167,3 +167,7 @@ Katy:
 
 Claude (technical):
 - `piece_feedback` table (migration `0008`). Each message to Claude lists the last 15 verdicts (loved, or not this, with the note, layout and motifs), plus Claude's recently archived pieces as "probably not wanted".
+
+## Oct 4, 2026: Boutiqly communities removed (Katy)
+
+- Katy asked to remove the "Boutiqly community" channel. It's gone from the channel list, the post editor, Claude's channels and the scope (`docs/scope.md`, `CLAUDE.md`). It can come back later as one entry in `shared/channels.ts`.

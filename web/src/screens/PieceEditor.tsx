@@ -15,7 +15,7 @@ const KIND_HELP: Record<Kind, string> = {
   story: "One 9:16 frame (1080×1920). Instagram sends an app ping to your phone.",
   story_set: "Several 9:16 frames. One app ping per frame, a minute apart.",
   reel: "One 9:16 video. Instagram sends an app ping so you can add a sound.",
-  text: "Words only: Threads, Facebook, LinkedIn, Bluesky, community, X.",
+  text: "Words only: Threads, Facebook, LinkedIn, Bluesky, X.",
   short: "One 9:16 video for YouTube Shorts.",
   pin: "One tall image (2:3) with a title and link.",
   google_update: "An update for Google Business Profile, with an optional link.",
