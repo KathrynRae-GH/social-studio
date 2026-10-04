@@ -2,6 +2,12 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 4, 2026: variety and every-network captions
+
+- Katy: designs are now much more on brand, but too alike. She also wants copy for every network by default.
+- Done: layout families with a no-repeat rule for the last 3 designs; recent designs (text plus pictures) shown to Claude with every message; captions asked for every channel the post can go to. Also merged earlier today: fast mode, real posts only, the connection keep-alive, and the large post preview. 107 server tests.
+- Next: Katy asks for a few posts in a row and checks they look different, and that each has captions for all networks.
+
 ## Oct 4, 2026: fast mode and the "colored squares" carousel
 
 - Katy: replies felt slow, and a "bold carousel of new arrivals" came back as a grid of labelled color squares with no photos and no copy.

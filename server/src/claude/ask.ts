@@ -4,7 +4,7 @@
 // changes that someone on the Team applies with one tap. It never approves
 // anything, never marks a caption Final, and only uses files the rules allow.
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/pool.ts";
 import { assets, calendarEntries, captions, conversationMessages, conversations, pieces, proposals } from "../db/schema.ts";
@@ -17,7 +17,7 @@ import { renderAndWait, type RenderDeps } from "../render.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
 import { CHANNELS, KIND_LABELS, channel, channelsFor, type Kind } from "../../../shared/channels.ts";
-import { SIZES, brandVariables, type StyleSetView } from "../../../shared/design.ts";
+import { LAYOUTS, SIZES, brandVariables, type Design, type StyleSetView } from "../../../shared/design.ts";
 import { utcToZoned, zonedToUtc } from "../../../shared/time.ts";
 import type { AskEvent, ChatItem, ConversationSummary, ConversationView, ProposalView } from "../../../shared/ask.ts";
 
@@ -33,6 +33,26 @@ export interface AskDeps extends ClaudeDeps {
 
 const MAX_TURNS = 14;
 const MAX_TAG_PER_CALL = 12;
+const RECENT_LAYOUTS_BLOCKED = 3; // a new piece can't reuse the layouts of the last 3 designs
+const RECENT_SHOWN = 6; // recent designs described in each message
+const RECENT_IMAGES = 3; // of which this many are shown as pictures
+
+// Channels this kind of piece can go to that don't have a caption yet.
+async function missingCaptions(db: Db, pieceId: string, kind: Kind): Promise<string[]> {
+  const have = new Set((await db.select({ channel: captions.channel, text: captions.text }).from(captions).where(eq(captions.pieceId, pieceId))).filter((c) => c.text.trim()).map((c) => c.channel));
+  return channelsFor(kind).map((c) => c.id as string).filter((id) => !have.has(id));
+}
+
+// The shop's most recent designed pieces, newest first.
+async function recentDesigns(db: Db, brand: Brand, limit: number) {
+  const rows = await db
+    .select({ id: pieces.id, title: pieces.title, kind: pieces.kind, design: pieces.design, assetIds: pieces.assetIds })
+    .from(pieces)
+    .where(and(eq(pieces.brandId, brand.id), eq(pieces.archived, false), isNotNull(pieces.design)))
+    .orderBy(desc(pieces.createdAt))
+    .limit(limit);
+  return rows.filter((r): r is typeof r & { design: Design } => !!r.design);
+}
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
 
 // ---- What Claude is told ----
@@ -84,6 +104,12 @@ Graphic language (draw it in code, matched to the shop's vibe)
 - Type treatments: tight leading on big headlines (0.9–1.0), uppercase with tracking for small labels, mixing weights, outline text, text on a curved path (SVG textPath), a highlighted word with a marker stroke behind it.
 - Photo treatments: bold crops (close-ups beat wide shots), arch or circle masks, duotone with mix-blend-mode, a sticker-style cutout frame, a photo grid, a photo placed on a colored block with a shadow.
 
+Variety (posts must not look alike)
+- Every design names a layout family. Choose deliberately, and never repeat the layout family of the shop's last few posts (they're described in each message) unless the owner asks:
+${Object.entries(LAYOUTS).map(([k, v]) => `  - ${k}: ${v}`).join("\n")}
+- Also vary placement: if recent posts put a starburst top right and a circle photo bottom right, put the focal point and graphics somewhere else this time (left, center, bottom band, full-bleed). Vary the background (light vs. saturated vs. photo vs. pattern), the headline position and the graphic motifs themselves.
+- Record where the main graphics sit in "motifs" so the next post can avoid repeating them.
+
 Carousels and Story sets
 - Slide 1 is the hook: one bold statement or image that makes people swipe. No logo-only covers.
 - Keep one visual system across slides (same grid, colors and type) but vary each slide's composition so it doesn't feel repetitive. A continuous element across slide edges (a line or shape that carries across) rewards swiping.
@@ -133,7 +159,7 @@ ${RULES}
 
 ## How you work on a design request
 1. Call list_assets first and pick the shop's best photos for the idea (product posts feature product photos). If nothing usable fits, tell the owner plainly what's missing (for example "I don't have photos of the new arrivals yet; upload a few in Assets") and either ask or make a clearly typographic post, never fake it with empty color blocks.
-2. Write real copy: an on-brand headline and short lines on the slides, and captions for each channel with alt text, in the shop's voice from its vibe notes and dos and don'ts. Use only facts you have; put [placeholders] where the owner must fill in a price or date.
+2. Write real copy: an on-brand headline and short lines on the slides, and **a caption for every channel this kind of piece can go to** (see Channels; the owner picks where to post later), each written for that channel, with alt text, in the shop's voice from its vibe notes and dos and don'ts. Only skip channels if the owner says so. Use only facts you have; put [placeholders] where the owner must fill in a price or date.
 3. Every design_piece call makes a real post the owner sees in their Library. Never make tests, color swatches, palette checks, layout experiments or placeholder pieces. You already know every color and font from this prompt.
 4. A carousel has 3–10 frames; a Story set has 2–10.
 
@@ -201,10 +227,13 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
           type: "object",
           properties: {
             size: { type: "string", enum: Object.keys(SIZES) },
+            layout: { type: "string", enum: Object.keys(LAYOUTS), description: "The layout family (see Variety in your instructions)." },
+            motifs: { type: "string", description: "Where the main graphic elements sit, e.g. 'starburst top right; rope line along the bottom; arrow bottom left'." },
+            owner_asked_for_this_layout: { type: "boolean", description: "True only if the owner explicitly asked for this layout or to match a recent post." },
             css: { type: "string" },
             frames: { type: "array", items: { type: "object", properties: { html: { type: "string" } }, required: ["html"] } },
           },
-          required: ["size", "css", "frames"],
+          required: ["size", "layout", "motifs", "css", "frames"],
         },
         captions: {
           type: "object",
@@ -260,7 +289,16 @@ const DesignInput = z.object({
   piece_id: z.string().optional(),
   kind: z.enum(KINDS as [Kind, ...Kind[]]),
   title: z.string().max(200),
-  design: z.object({ size: z.string(), css: z.string(), frames: z.array(z.object({ html: z.string() })) }).optional(),
+  design: z
+    .object({
+      size: z.string(),
+      layout: z.string().optional(),
+      motifs: z.string().optional(),
+      owner_asked_for_this_layout: z.boolean().optional(),
+      css: z.string(),
+      frames: z.array(z.object({ html: z.string() })),
+    })
+    .optional(),
   captions: z.record(z.string(), z.object({ text: z.string(), alt_text: z.string().optional() })).optional(),
 });
 const ProposeInput = z.object({
@@ -404,6 +442,21 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
           isError: true,
         };
       }
+      if (input.design && input.kind !== "text") {
+        if (!input.design.layout || !(input.design.layout in LAYOUTS)) {
+          return { content: `Nothing was saved. Name the layout family: one of ${Object.keys(LAYOUTS).join(", ")}.`, isError: true };
+        }
+        if (!input.piece_id && !input.design.owner_asked_for_this_layout) {
+          const recent = await recentDesigns(db, brand, RECENT_LAYOUTS_BLOCKED);
+          const clash = recent.find((r) => r.design.layout === input.design!.layout);
+          if (clash) {
+            return {
+              content: `Nothing was saved. "${clash.title}" already used the ${input.design.layout} layout recently. Pick a different layout family for variety (recent: ${recent.map((r) => r.design.layout ?? "?").join(", ")}), and place your graphics differently too.`,
+              isError: true,
+            };
+          }
+        }
+      }
       let pieceId = input.piece_id;
       if (pieceId) {
         if (!isUuid(pieceId)) return { content: "piece_id isn't a valid id.", isError: true };
@@ -437,6 +490,9 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
         // Always a draft: only people mark captions Final.
         await setCaption(db, viewer, pieceId, ch, { text: cap.text, altText: cap.alt_text ?? "", status: "draft" });
       }
+
+      const missing = await missingCaptions(db, pieceId, input.kind);
+      if (missing.length) capNotes.push(`Still missing captions for: ${missing.join(", ")}. Write them (each in that channel's style) in your next design_piece call with piece_id ${pieceId}.`);
 
       let frames: string[] = [];
       if (input.design) {
@@ -483,7 +539,7 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
         draft === 1
           ? `This is draft 1. Required before you reply to the owner: ${CRITIQUE}\nThen call design_piece again with piece_id ${pieceId} and the improved design (keep the captions unless they need changing).`
           : draft >= 3
-            ? "This is the final draft for this turn. Reply to the owner: say in a sentence or two what you made and why, and offer one or two specific directions they could ask for next."
+            ? `This is the final draft for this turn.${missing.length ? ` First add the missing captions (${missing.join(", ")}) with one more design_piece call on piece_id ${pieceId} without a design.` : ""} Then reply to the owner: say in a sentence or two what you made and why, and offer one or two specific directions they could ask for next.`
             : `This is draft ${draft}. ${CRITIQUE}\nIf something is still clearly weak, call design_piece once more with piece_id ${pieceId}; otherwise reply to the owner with a sentence or two on what you made and why.`;
       return { content: [{ type: "text", text: summary }, ...images, { type: "text", text: next }] };
     }
@@ -640,6 +696,22 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
       if (board.length) {
         userContent.push({ type: "text", text: `The shop's inspiration board (${board.length} post${board.length > 1 ? "s" : ""} they love). Study these before designing:` });
         for (const a of board) userContent.push({ type: "image", source: { type: "url", url: a.url } });
+      }
+    }
+    // What the shop's recent designs look like, so the next one is different.
+    const recent = await recentDesigns(deps.db, brand, RECENT_SHOWN);
+    if (recent.length) {
+      userContent.push({
+        type: "text",
+        text:
+          "The shop's most recent designs (newest first). Make new posts clearly different from these in layout family, composition and where graphics sit:\n" +
+          recent.map((r, i) => `${i + 1}. "${r.title}" (${r.kind}): layout ${r.design.layout ?? "unknown"}; motifs: ${r.design.motifs ?? "not recorded"}`).join("\n"),
+      });
+      const firstFrames = recent.slice(0, RECENT_IMAGES).map((r) => r.assetIds[0]).filter((id): id is string => !!id);
+      const urls = firstFrames.length ? await deps.db.select({ id: assets.id, url: assets.url }).from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, firstFrames))) : [];
+      for (const id of firstFrames) {
+        const u = urls.find((x) => x.id === id);
+        if (u) userContent.push({ type: "image", source: { type: "url", url: u.url } });
       }
     }
     userContent.push({ type: "text", text: `[${now.date} ${now.time}, ${tz}; from ${viewer.ctx.name || "the team"}]\n${text}` });

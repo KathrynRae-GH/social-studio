@@ -135,3 +135,15 @@ Claude (technical):
   - A new piece is refused unless it has captions.
   - Claude's instructions now map every color variable to its color, forbid test, swatch or placeholder pieces, and set a working order: photos first, real copy, then the design.
   - Each tool call writes a one-line trace to the server log, so odd results can be diagnosed from Render's logs.
+
+## Oct 4, 2026: variety, and captions for every network
+
+Katy:
+- Designs were on brand but too alike (same layout, graphics in the same places). Posts must vary a lot.
+- When she asks for a post, Claude writes copy for **all** the networks that type of post can go to; the owner picks where to post.
+
+Claude (technical):
+- 17 layout families in `shared/design.ts` (type poster, full-bleed photo, split screen, collage, product grid, arch window, magazine cover, polaroid, quote card, big number, list, sticker sheet, ticket or tag, pattern, minimal, speech bubble, this-or-that). Every design names its family and its "motifs" (where the main graphics sit); both are stored on the piece.
+- Each message to Claude lists the shop's 6 most recent designs (layout and motifs) and shows the first frame of the latest 3.
+- A new piece can't reuse the layout family of the last 3 designs, unless Claude says the owner asked for it.
+- After each save, Claude is told which channels still lack a caption, and is asked to fill them before it finishes.
