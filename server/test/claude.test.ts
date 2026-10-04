@@ -338,6 +338,78 @@ describe("designing with Claude", () => {
   });
 });
 
+describe("long and cut-off replies", () => {
+  const roles = (params: StreamParams) => params.messages.map((m) => m.role);
+  const alternates = (rs: string[]) => rs.every((r, i) => i === 0 || r !== rs[i - 1]);
+
+  it("leaves a note when it runs out of steps, and the chat can carry on", async () => {
+    await claudeOn();
+    script = Array.from({ length: 40 }, (_, i) => useTool("read_calendar", {}, `tu_${i}`));
+    const { events } = await askRaw("Make me twelve Stories");
+    const chatId = events.find((e) => e.type === "start").conversationId;
+    const chat = (await t.app.inject({ url: `/api/conversations/${chatId}`, headers: agency.headers })).json().conversation;
+    expect(chat.items.at(-1)).toMatchObject({ kind: "claude", text: expect.stringContaining("ran out of steps") });
+    expect(chat.interrupted).toBe(false);
+
+    script = [say("Picking up where I left off.")];
+    await askRaw("keep going", chatId);
+    expect(alternates(roles(calls.at(-1)!))).toBe(true);
+  });
+
+  it("spots a reply cut off by a restart, and Continue picks it up cleanly", async () => {
+    await claudeOn();
+    script = [say("Sure, here's the first one.")];
+    const { events } = await askRaw("Make three Stories");
+    const chatId = events.find((e) => e.type === "start").conversationId;
+    // The app restarted after Claude asked for a tool, before it ran.
+    await t.pool.query(
+      `INSERT INTO conversation_messages (conversation_id, role, content) VALUES ($1, 'user', $2), ($1, 'assistant', $3)`,
+      [chatId, JSON.stringify([{ type: "text", text: "Now the other two" }]), JSON.stringify([{ type: "tool_use", id: "tu_cut", name: "read_calendar", input: {} }])],
+    );
+    const chat = (await t.app.inject({ url: `/api/conversations/${chatId}`, headers: agency.headers })).json().conversation;
+    expect(chat).toMatchObject({ working: false, interrupted: true });
+
+    script = [say("Back on it.")];
+    await askRaw("Please continue where you left off.", chatId);
+    const last = calls.at(-1)!;
+    expect(alternates(roles(last))).toBe(true);
+    expect(JSON.stringify(last.messages)).toContain("Interrupted before this finished");
+    const after = (await t.app.inject({ url: `/api/conversations/${chatId}`, headers: agency.headers })).json().conversation;
+    expect(after.interrupted).toBe(false);
+  });
+
+  it("makes the second draft of a piece final, and shows at most 3 frames as pictures", async () => {
+    await claudeOn();
+    const frames = Array.from({ length: 5 }, (_, i) => ({ html: `<h1>Frame ${i + 1}</h1>` }));
+    const design = { size: "story", layout: "type-poster", motifs: "m", css: "", frames };
+    script = [
+      useTool("design_piece", { kind: "story_set", title: "Week of Stories", design, captions: { instagram: { text: "This week" } } }, "tu_d1"),
+      (params) => {
+        const id = JSON.parse(JSON.stringify(params.messages)).at(-1).content[0].content[0].text.match(/"piece_id":"([^"]+)"/)[1];
+        return useTool("design_piece", { piece_id: id, kind: "story_set", title: "Week of Stories", design }, "tu_d2")(params, 0);
+      },
+      say("Done"),
+    ];
+    await askRaw("A week of Stories");
+    const first = (calls[1]!.messages.at(-1)!.content as { content: { type: string; text?: string }[] }[])[0]!.content;
+    expect(first.filter((b) => b.type === "image")).toHaveLength(3);
+    expect(first.some((b) => b.text?.startsWith("Frame 4: asset"))).toBe(true);
+    const second = (calls[2]!.messages.at(-1)!.content as { content: { type: string; text?: string }[] }[])[0]!.content;
+    expect(second.at(-1)!.text).toContain("This is the final draft of this piece");
+  });
+
+  it("doesn't show Claude's hidden notes as the owner's words", async () => {
+    await claudeOn();
+    const make = await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title: "Hi" } });
+    await t.app.inject({ method: "POST", url: `/api/pieces/${make.json().piece.id}/feedback`, headers: agency.headers, payload: { rating: 1, note: "love the colors" } });
+    script = [say("Hello!")];
+    const { events } = await askRaw("Hi there");
+    const chatId = events.find((e) => e.type === "start").conversationId;
+    const chat = (await t.app.inject({ url: `/api/conversations/${chatId}`, headers: agency.headers })).json().conversation;
+    expect(chat.items.filter((i: { kind: string }) => i.kind === "user").map((i: { text: string }) => i.text)).toEqual(["Hi there"]);
+  });
+});
+
 describe("comments into edits", () => {
   async function approvedPost() {
     const id = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title: "Hours post" } })).json().piece.id as string;

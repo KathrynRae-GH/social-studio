@@ -242,3 +242,22 @@ Claude (technical):
 ## Oct 4, 2026: Library and Assets tiles are no longer buttons (technical)
 
 - The first fix for the white bar above some Library pictures (flex layout on the button) didn't hold in Katy's browser. Buttons center their content, and some browsers (Safari especially) ignore layout styles on buttons. Tiles are now plain blocks with `role="button"`. They still open on click, Enter or Space, and show a green focus ring.
+
+## Oct 4, 2026: Ask Claude never goes silent, finishes big requests, runs faster
+
+Katy asked for several Story posts and got no answer at all. Three things could do that, and all three are fixed.
+
+Claude (technical):
+- **Step limit:** one reply can now take 40 Claude steps (was 14; about 3 per piece). If it still runs out, or an error stops it, the chat gets a closing note ("I ran out of steps… say 'keep going'"), saved in the conversation. Spend is still capped by the shop's monthly limit.
+- **Cut off by an update:**
+  - When a chat's last saved message still waits for Claude (the app restarted mid-reply), it reports `interrupted`. The panel then shows "Claude was interrupted… Continue".
+  - On the next message, unanswered tool calls get an "interrupted" result and a short note closes Claude's turn, so the conversation stays valid.
+- **Updates wait for replies:** on SIGTERM the server waits up to 4.5 minutes for Ask replies in progress before shutting down. `render.yaml` sets `maxShutdownDelaySeconds: 300`.
+- **Panel:**
+  - Follows a reply in progress for up to 30 minutes (was 8), and shows the step and the minutes so far.
+  - Says so if it's still going after that, instead of stopping quietly.
+- **Faster:**
+  - At most 2 drafts per piece (draft 1 always gets one critique and redraw, then it's final). The third optional round is gone.
+  - After each draft Claude sees the first 3 frames as pictures; the rest are listed by id, which it can open if needed.
+  - Several pieces are made one at a time, with a one-line progress note after each.
+- Reopened chats no longer show Claude's hidden notes (the owner's verdicts and the recent designs) as if the owner had typed them.
