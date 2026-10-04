@@ -197,7 +197,7 @@ describe("making a real post", () => {
 
   it("won't save a new piece without captions, and tells Claude every color", async () => {
     await claudeOn();
-    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", layout: "type-poster", motifs: "test motif", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
     await askRaw("A post");
     const result = (calls[1]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(result.is_error).toBe(true);
@@ -241,7 +241,7 @@ describe("designing with Claude", () => {
   it("only uses files the rules allow", async () => {
     const photo = await upload(); // before Claude is on, so it isn't tagged in the background
     await claudeOn();
-    const design = { size: "portrait", css: "", frames: [{ html: `<img class="photo" src="asset:${photo}">` }] };
+    const design = { size: "portrait", layout: "full-bleed-photo", motifs: "test motif", css: "", frames: [{ html: `<img class="photo" src="asset:${photo}">` }] };
     script = [useTool("design_piece", { kind: "post", title: "Window", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("Done")];
     await askRaw("Make a post with the window photo");
     const toolResult = (calls[1]!.messages.at(-1)!.content as { type: string; is_error?: boolean; content: string }[])[0]!;
@@ -255,7 +255,7 @@ describe("designing with Claude", () => {
     await claudeOn();
     await markTagged(photo);
     const design = {
-      size: "portrait",
+      size: "portrait", layout: "split-screen", motifs: "test motif",
       css: "h1{color:var(--brand-accent)}",
       frames: [{ html: `<h1>Fall is here</h1><img class="photo" src="asset:${photo}"><script>alert(1)</script>` }, { html: "<h1>Come say hi</h1>" }],
     };
@@ -294,7 +294,7 @@ describe("designing with Claude", () => {
     await markTagged(photo);
     await t.pool.query("INSERT INTO brands (location_id, company_id) VALUES ('loc_other', 'co_boutiqly')");
     await t.pool.query("UPDATE assets SET brand_id = (SELECT id FROM brands WHERE location_id = 'loc_other')");
-    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${photo}">` }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", layout: "photo-collage", motifs: "test motif", css: "", frames: [{ html: `<img src="asset:${photo}">` }] } }), say("ok")];
     await askRaw("Use that photo");
     const toolResult = (calls[1]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(toolResult.is_error).toBe(true);
@@ -304,8 +304,8 @@ describe("designing with Claude", () => {
   it("uses the shop's look only once it's approved", async () => {
     await claudeOn();
     await t.app.inject({ method: "PUT", url: "/api/style", headers: agency.headers, payload: { colors: [{ name: "Riot Pink", hex: "#ff3399", role: "accent" }, { name: "Ink", hex: "#111111", role: "text" }], headingFont: "Bebas Neue" } });
-    const design = { size: "story", css: "", frames: [{ html: "<h1>Hi</h1>" }] };
-    script = [useTool("design_piece", { kind: "story", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok"), useTool("design_piece", { kind: "story", title: "b", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok")];
+    const design = { size: "story", layout: "arch-window", motifs: "test motif", css: "", frames: [{ html: "<h1>Hi</h1>" }] };
+    script = [useTool("design_piece", { kind: "story", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok"), useTool("design_piece", { kind: "story", title: "b", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { ...design, layout: "pattern" } }), say("ok")];
     await askRaw("Story please");
     expect(renderedDocs[0]![0]).toContain("--brand-accent: #de771f"); // still the fallback
 
@@ -468,7 +468,7 @@ describe("uploaded fonts", () => {
     const style = (await t.app.inject({ method: "POST", url: "/api/style/approve", headers: agency.headers })).json().style;
     expect(style.customFonts).toEqual([{ id, family: "Riot Sans", weight: 400, italic: false, format: "woff2" }]);
 
-    script = [useTool("design_piece", { kind: "post", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", layout: "magazine-cover", motifs: "test motif", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
     await askRaw("A post please");
     const doc = renderedDocs[0]![0]!;
     expect(doc).toContain(`@font-face { font-family: "Riot Sans"; src: url("https://fonts.render.local/${id}") format("woff2")`);
@@ -526,7 +526,7 @@ describe("the inspiration board", () => {
     const id = (await t.app.inject({ url: "/api/assets", headers: agency.headers })).json().assets[0].id;
     await markTagged(id);
     const conversationId = first.events[0].conversationId;
-    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${id}">` }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", layout: "polaroid", motifs: "test motif", css: "", frames: [{ html: `<img src="asset:${id}">` }] } }), say("ok")];
     await askRaw("Use that one", conversationId);
     const toolResult = (calls.at(-1)!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(toolResult.is_error).toBe(true);
@@ -534,5 +534,38 @@ describe("the inspiration board", () => {
 
     const view = (await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: agency.headers })).json().conversation;
     expect(view.items[0]).toEqual({ kind: "user", text: "Make something fresh" });
+  });
+});
+
+describe("variety", () => {
+  const caps = { instagram: { text: "Hi there", alt_text: "A post" } };
+  const make = (title: string, layout: string, extra: Record<string, unknown> = {}) =>
+    useTool("design_piece", { kind: "post", title, captions: caps, design: { size: "portrait", layout, motifs: "starburst top right", css: "", frames: [{ html: "<h1>Hi</h1>" }], ...extra } });
+
+  it("won't reuse a recent layout for a new post unless the owner asked", async () => {
+    await claudeOn();
+    script = [make("First", "type-poster"), say("ok")];
+    await askRaw("A post");
+    script = [make("Second", "type-poster"), say("ok")];
+    await askRaw("Another post");
+    const blocked = (calls.at(-1)!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
+    expect(blocked.is_error).toBe(true);
+    expect(blocked.content).toContain('"First" already used the type-poster layout');
+    // The next message describes recent designs, with their layout and motifs.
+    const sent = calls.at(-1)!.messages.at(-3)!.content as { type: string; text?: string }[];
+    expect(sent.find((b) => b.text?.includes("most recent designs"))!.text).toContain('"First" (post): layout type-poster; motifs: starburst top right');
+
+    script = [make("Third", "type-poster", { owner_asked_for_this_layout: true }), say("ok")];
+    await askRaw("Same layout as the last one please");
+    expect((await t.pool.query("SELECT title FROM pieces ORDER BY created_at")).rows.map((r) => r.title)).toEqual(["First", "Third"]);
+  });
+
+  it("asks for captions on every channel the post can go to", async () => {
+    await claudeOn();
+    script = [make("One", "minimal"), say("ok")];
+    await askRaw("A post");
+    const result = JSON.parse(((calls[1]!.messages.at(-1)!.content as { content: { type: string; text?: string }[] }[])[0]!.content)[0]!.text!);
+    expect(result.notes.join(" ")).toMatch(/Still missing captions for: .*facebook/);
+    expect((calls[0]!.system as { text: string }[])[0]!.text).toContain("a caption for every channel this kind of piece can go to");
   });
 });

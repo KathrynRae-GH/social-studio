@@ -12,7 +12,7 @@ import { usableInDesign } from "./assets.ts";
 import { styleForDesign } from "./styles.ts";
 import { clearOutputs, enqueueJob, getJob, takeOutputs, tryWithLock, waitForJob } from "./jobs.ts";
 import { storeFile } from "./media.ts";
-import { SIZES, assetRefs, frameDocument, type Design, type DesignSize } from "../../shared/design.ts";
+import { LAYOUTS, SIZES, assetRefs, frameDocument, type Design, type DesignSize } from "../../shared/design.ts";
 
 export interface RenderDeps {
   db: Db;
@@ -35,7 +35,9 @@ export function cleanDesign(input: unknown): Design {
   if (css.length > MAX_HTML || frames.some((f) => f.html.length > MAX_HTML || !f.html.trim())) {
     throw new AccessError("Each frame needs content, and each part must stay under 60,000 characters.", 400);
   }
-  return { size: d.size as DesignSize, css, frames };
+  const layout = typeof d.layout === "string" && d.layout in LAYOUTS ? d.layout : undefined;
+  const motifs = typeof d.motifs === "string" ? d.motifs.slice(0, 300) : undefined;
+  return { size: d.size as DesignSize, css, frames, ...(layout ? { layout } : {}), ...(motifs ? { motifs } : {}) };
 }
 
 // Builds the documents and queues the render. Throws (with a reason Claude

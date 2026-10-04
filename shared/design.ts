@@ -52,8 +52,33 @@ export interface DesignFrame {
   html: string; // body content; photos as src="asset:<id>", the logo as src="asset:logo"
 }
 
+// Layout families Claude picks from, so posts don't all look alike. Each
+// design names its family and where its main graphics sit (motifs), and the
+// next post is steered away from the recent ones.
+export const LAYOUTS: Record<string, string> = {
+  "type-poster": "Oversized headline is the whole design; type as image, little or no photo",
+  "full-bleed-photo": "A photo edge to edge, with type on a band, shape or sticker over it",
+  "split-screen": "The frame split in two (vertical, horizontal or diagonal): photo on one side, color and type on the other",
+  "photo-collage": "3–5 photos scrapbook style: overlapping, rotated, taped or torn",
+  "product-grid": "A tidy grid or row of products, each with a short label",
+  "arch-window": "One photo in an arch, circle or blob mask as the hero, with type wrapped around it",
+  "magazine-cover": "A masthead, a hero photo and cover lines, like a magazine",
+  "polaroid": "Photos as instant prints or snapshots with handwritten notes",
+  "quote-card": "A short line or quote, typographic, inside a decorative frame or border",
+  "big-number": "A huge number leads (\"3 new picks\", \"No. 1\"), with a short list or note",
+  "list": "A numbered list or checklist: tips, picks, reasons",
+  "sticker-sheet": "Lots of small stickers and badges scattered around a central message",
+  "ticket-or-tag": "Styled like a ticket, receipt, price tag, label or postcard",
+  "pattern": "A bold repeating pattern background with the message framed on top",
+  "minimal": "Quiet and spacious: small, elegant type and one detail",
+  "speech-bubble": "Speech or thought bubbles, a conversation or a callout",
+  "this-or-that": "Two halves compared: this or that, before and after, day and night",
+};
+
 export interface Design {
   size: DesignSize;
+  layout?: string; // one of LAYOUTS
+  motifs?: string; // where the main graphics sit, e.g. "starburst top right; rope line along the bottom"
   css: string; // shared by every frame
   frames: DesignFrame[];
   renderedAt?: string | null;
