@@ -4,14 +4,14 @@
 // changes that someone on the Team applies with one tap. It never approves
 // anything, never marks a caption Final, and only uses files the rules allow.
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, asc, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/pool.ts";
 import { assets, calendarEntries, captions, conversationMessages, conversations, pieces, proposals } from "../db/schema.ts";
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "../brands.ts";
 import { callClaude, ClaudePausedError, type ClaudeDeps } from "./client.ts";
 import { tryWithLock } from "../jobs.ts";
-import { assetDetail, inspirationFor, ownAsset } from "../assets.ts";
+import { assetDetail, inspirationFor, ownAsset, tagAsset } from "../assets.ts";
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
 import { getPiece, setCaption } from "../library.ts";
@@ -25,12 +25,14 @@ type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlock = Anthropic.Beta.BetaContentBlockParam;
 
 export interface AskDeps extends ClaudeDeps {
+  fetchImpl: typeof fetch;
   pool: RenderDeps["pool"];
   render: RenderDeps;
   calendar: CalendarDeps;
 }
 
 const MAX_TURNS = 14;
+const MAX_TAG_PER_CALL = 12;
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
 
 // ---- What Claude is told ----
@@ -103,11 +105,20 @@ const CRITIQUE = `Review the rendered frames above like a demanding art director
 5. Freshness: is any part "basic" (see the list in your instructions)?
 Name the two or three biggest weaknesses to yourself, then fix them.`;
 
+function colorMap(style: StyleSetView): string {
+  const vars = brandVariables(style);
+  const byRole = Object.entries(vars).filter(([k]) => k.startsWith("--brand-") && !k.startsWith("--brand-color-"));
+  const lines = style.colors.map((c, i) => `- var(--brand-color-${i + 1}) = ${c.name} ${c.hex} (${c.role})`);
+  lines.push(...byRole.map(([k, v]) => `- var(${k}) = ${v}`));
+  return lines.join("\n");
+}
+
 function styleText(style: StyleSetView, shopName: string): string {
   return `## This shop
 Name: ${shopName || "(not set)"}
 Look: ${style.status === "approved" ? "the shop's approved style set" : "the basic Boutiqly look (the shop's own look isn't approved yet), with no logo"}
-Colors: ${style.colors.map((c) => `${c.name} ${c.hex} (${c.role})`).join("; ")}
+Colors (and the CSS variable for each, so you never need to test them):
+${colorMap(style)}
 Heading font: ${style.headingFont}. Body font: ${style.bodyFont}.${style.customFonts.length ? `\nUploaded fonts (already loaded, use by family name): ${[...new Set(style.customFonts.map((f) => `${f.family} (${style.customFonts.filter((x) => x.family === f.family).map((x) => `${x.weight}${x.italic ? " italic" : ""}`).join(", ")})`))].join("; ")}.` : ""}
 Logo: ${style.logoUrl ? "yes (asset:logo)" : "none, so never include a logo"}
 Vibe: ${style.vibe || "(no notes yet)"}
@@ -119,6 +130,12 @@ function systemPrompt(style: StyleSetView, shopName: string): string {
   return `You are Claude, working inside Social Studio, a social media studio built into Boutiqly for small shops. You help the shop's owner and team plan, design and write their social media: posts, carousels, Stories, Story sets, text posts, pins, Google updates, captions for every channel, alt text, ideas and the posting plan. You're a strong designer and a warm, specific writer. Keep replies short and useful; show, don't lecture.
 
 ${RULES}
+
+## How you work on a design request
+1. Call list_assets first and pick the shop's best photos for the idea (product posts feature product photos). If nothing usable fits, tell the owner plainly what's missing (for example "I don't have photos of the new arrivals yet; upload a few in Assets") and either ask or make a clearly typographic post, never fake it with empty color blocks.
+2. Write real copy: an on-brand headline and short lines on the slides, and captions for each channel with alt text, in the shop's voice from its vibe notes and dos and don'ts. Use only facts you have; put [placeholders] where the owner must fill in a price or date.
+3. Every design_piece call makes a real post the owner sees in their Library. Never make tests, color swatches, palette checks, layout experiments or placeholder pieces. You already know every color and font from this prompt.
+4. A carousel has 3–10 frames; a Story set has 2–10.
 
 ${designGuide(style)}
 
@@ -336,6 +353,19 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
     case "list_assets": {
       const input = AssetsInput.parse(rawInput);
       const q = input.query?.trim().toLowerCase();
+      // Photos uploaded while Claude was off were never looked at, so they
+      // can't be used yet. Look at them now (a cent or so each).
+      const untagged = await db
+        .select({ id: assets.id })
+        .from(assets)
+        .where(and(eq(assets.brandId, brand.id), eq(assets.madeBy, "upload"), eq(assets.purpose, "content"), isNull(assets.taggedAt), like(assets.mime, "image/%")))
+        .limit(MAX_TAG_PER_CALL);
+      if (untagged.length) {
+        ctx.emit({ type: "status", text: `Looking at ${untagged.length} new photo${untagged.length > 1 ? "s" : ""} first…` });
+        const results = await Promise.allSettled(untagged.map((u) => tagAsset(deps, viewer, u.id)));
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length) console.warn(`[ask] ${failed.length} photo(s) couldn't be tagged: ${(failed[0] as PromiseRejectedResult).reason}`);
+      }
       const rows = await db.select().from(assets).where(and(eq(assets.brandId, brand.id), or(eq(assets.madeBy, "upload"), eq(assets.madeBy, "blur")))).orderBy(desc(assets.createdAt)).limit(500);
       const list = rows
         .map(assetDetail)
@@ -368,6 +398,12 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
     }
     case "design_piece": {
       const input = DesignInput.parse(rawInput);
+      if (!input.piece_id && Object.values(input.captions ?? {}).every((c) => !c.text.trim())) {
+        return {
+          content: "Nothing was saved. A new piece needs its captions: write one for each channel it's for (at least Instagram for a post or carousel), plus alt text, in the shop's voice. Then call design_piece again.",
+          isError: true,
+        };
+      }
       let pieceId = input.piece_id;
       if (pieceId) {
         if (!isUuid(pieceId)) return { content: "piece_id isn't a valid id.", isError: true };
@@ -644,6 +680,9 @@ export async function ask(deps: AskDeps, viewer: Viewer, input: { conversationId
             else if (err instanceof AccessError) outcome = { content: err.message, isError: true };
             else throw err;
           }
+          // A one-line trace per tool call in the server log, to diagnose odd results.
+          const preview = typeof outcome.content === "string" ? outcome.content : outcome.content.find((c) => c.type === "text")?.text ?? "";
+          console.info(`[ask] ${conversationId} ${use.name} ${outcome.isError ? "ERROR" : "ok"}: ${preview.replace(/\s+/g, " ").slice(0, 160)}`);
           results.push({ type: "tool_result", tool_use_id: use.id, content: outcome.content as Anthropic.Beta.BetaToolResultBlockParam["content"], ...(outcome.isError ? { is_error: true } : {}) });
         }
         history.push({ role: "user", content: results });

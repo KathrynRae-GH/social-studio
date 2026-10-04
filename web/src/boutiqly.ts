@@ -148,6 +148,7 @@ export const api = {
   assets: () => call<{ assets: AssetDetail[] }>("/api/assets"),
   setAssetRules: (id: string, input: Partial<{ peopleRule: AssetDetail["peopleRule"]; flagsCleared: boolean }>) =>
     call<{ asset: AssetDetail }>(`/api/assets/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  tagNewAssets: () => call<{ tagged: number; of: number; error: string | null; assets: AssetDetail[] }>("/api/assets/tag-new", { method: "POST", body: "{}" }),
   tagAsset: (id: string) => call<{ asset: AssetDetail }>(`/api/assets/${id}/tag`, { method: "POST", body: "{}" }),
   blurAsset: (id: string) => call<{ jobId: string }>(`/api/assets/${id}/blur`, { method: "POST", body: "{}" }),
   blurResult: (id: string, jobId: string) =>

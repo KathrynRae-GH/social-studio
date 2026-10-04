@@ -22,6 +22,9 @@ export interface Config {
   };
   claudeModel: string;
   anthropicApiKey: string;
+  // Anthropic's fast mode: the same model writes up to ~2.5x faster at 2x the
+  // token price. On unless CLAUDE_FAST_MODE=off.
+  claudeFastMode: boolean;
   // Studio credits per cent of Claude cost (1 credit = 1 cent of Claude cost x markup)
   creditMarkup: number;
   walletBillingMode: "off" | "test" | "live";
@@ -61,6 +64,7 @@ export function loadConfig(): Config {
     },
     claudeModel: read("CLAUDE_MODEL", "claude-opus-5-5"),
     anthropicApiKey: read("ANTHROPIC_API_KEY"),
+    claudeFastMode: read("CLAUDE_FAST_MODE", "on").toLowerCase() !== "off",
     creditMarkup: Number(read("CREDIT_MARKUP", "2")) || 2,
     walletBillingMode: (["off", "test", "live"].includes(read("WALLET_BILLING_MODE"))
       ? read("WALLET_BILLING_MODE")
@@ -113,3 +117,6 @@ export const CLAUDE_PRICES: Record<string, ModelPrice> = {
 export const UNKNOWN_MODEL_PRICE: ModelPrice = { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 };
 
 export const WEB_SEARCH_DOLLARS_PER_1000 = 10;
+
+// Fast mode charges this multiple of the token prices (not of web searches).
+export const FAST_MODE_MULTIPLIER = 2;

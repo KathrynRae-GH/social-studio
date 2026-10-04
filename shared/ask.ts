@@ -42,4 +42,5 @@ export interface ClaudeStatus {
   capCents: number;
   spentCents: number;
   connected: boolean;
+  fastMode: boolean;
 }
