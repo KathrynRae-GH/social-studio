@@ -57,8 +57,10 @@ const useTool = (name: string, input: unknown, id = `tu_${name}`): Script => () 
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 let renderedDocs: string[][] = [];
 function startFakeWorker() {
-  workerTimer = setInterval(async () => {
-    const { rows } = await t.pool.query("SELECT id, kind, payload FROM jobs WHERE status = 'queued'");
+  workerTimer = setInterval(() => void tick().catch(() => {}), 50);
+  async function tick() {
+    // Claim jobs first so two overlapping ticks never work on the same one.
+    const { rows } = await t.pool.query("UPDATE jobs SET status = 'running' WHERE status = 'queued' RETURNING id, kind, payload");
     for (const job of rows) {
       const docs: string[] = job.kind === "render" ? job.payload.docs : ["blurred"];
       if (job.kind === "render") renderedDocs.push(docs);
@@ -67,7 +69,7 @@ function startFakeWorker() {
       }
       await t.pool.query("UPDATE jobs SET status = 'done', result = '{}' WHERE id = $1", [job.id]);
     }
-  }, 50);
+  }
 }
 
 let t: Awaited<ReturnType<typeof testApp>>;
