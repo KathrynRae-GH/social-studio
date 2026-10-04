@@ -261,3 +261,8 @@ Claude (technical):
   - After each draft Claude sees the first 3 frames as pictures; the rest are listed by id, which it can open if needed.
   - Several pieces are made one at a time, with a one-line progress note after each.
 - Reopened chats no longer show Claude's hidden notes (the owner's verdicts and the recent designs) as if the owner had typed them.
+
+## Oct 4, 2026: Library status filters (Katy)
+
+- A second row of filters on the Library: Any status, New this week, Suggested, Approved (no date yet), On calendar, Locked, Scheduled, Posted, each with a count. A post can sit at different stages on different networks, so it shows under every stage any of its networks is at. "New this week" means made in the last 7 days.
+- Shipped with migration `0012` (the strategy table and `pieces.pillar`), which the Strategy section coming next will use.

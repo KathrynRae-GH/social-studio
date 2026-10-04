@@ -55,6 +55,8 @@ export interface PieceView {
   updatedAt: string;
   source: "owner" | "claude";
   design: Design | null;
+  pillar: string | null; // content pillar id (Brand → Strategy)
+  createdAt: string;
 }
 
 export interface EntryView {
