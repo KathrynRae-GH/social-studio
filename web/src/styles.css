@@ -122,7 +122,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Assets */
 .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.asset-card { text-align: left; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; font: inherit; color: var(--text); cursor: pointer; }
+.asset-card { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; text-align: left; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; font: inherit; color: var(--text); cursor: pointer; }
 .asset-card:hover { border-color: var(--green); }
 .asset-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--border); }
 .asset-meta { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; align-items: flex-start; }
@@ -183,7 +183,8 @@ h3 { font-size: 16px; }
 
 /* Library grid */
 .piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
-.piece-card { text-align: left; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; color: var(--text); font: inherit; }
+/* Cards are buttons, and buttons center their content; keep it at the top. */
+.piece-card { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; text-align: left; padding: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; color: var(--text); font: inherit; }
 .piece-card:hover { border-color: var(--green); }
 .piece-thumb { width: 100%; aspect-ratio: 4 / 5; }
 .piece-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
