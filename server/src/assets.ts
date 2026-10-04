@@ -63,6 +63,7 @@ export function assetDetail(a: Asset): AssetDetail {
     madeBy: a.madeBy,
     purpose: a.purpose,
     sourceAssetId: a.sourceAssetId,
+    fromStore: !!a.productId,
     usable: usableInDesign(a),
   };
 }

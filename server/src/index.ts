@@ -19,7 +19,7 @@ const { pool, db } = createDb(config.databaseUrl);
 // A dropped idle database connection shouldn't take the server down.
 pool.on("error", (err) => console.error("Database connection error:", err.message));
 await migrate(pool);
-const app = buildApp({ config, db, pool });
+const app = buildApp({ config, db, pool, background: true });
 await app.listen({ port: config.port, host: "0.0.0.0" });
 console.log(`Social Studio listening on ${config.port}`);
 

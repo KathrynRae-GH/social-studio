@@ -30,6 +30,10 @@ import { contentRoutes } from "./routes/content.ts";
 import { autoTagger, claudeRoutes } from "./routes/claude.ts";
 import { anthropicApi, type ClaudeApi } from "./claude/client.ts";
 import type { AskDeps } from "./claude/ask.ts";
+import { tagAsset } from "./assets.ts";
+import { storeRoutes } from "./routes/store.ts";
+import { startStoreRefresher, type StoreDeps } from "./store/sync.ts";
+import { safeStoreFetch, type StoreFetch } from "./store/net.ts";
 
 export interface AppDeps {
   config: Config;
@@ -37,11 +41,13 @@ export interface AppDeps {
   pool: pg.Pool;
   fetchImpl?: typeof fetch;
   claudeApi?: ClaudeApi; // tests pass a scripted stand-in
+  storeFetch?: StoreFetch; // reads shops' public store pages; tests pass a stand-in
+  background?: boolean; // run the daily store refresh (the real server only)
 }
 
 const WEB_DIST = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
-export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi }: AppDeps) {
+export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi, storeFetch = safeStoreFetch, background = false }: AppDeps) {
   const app = Fastify({
     // Logs never carry the login pass or query strings (install codes travel in them).
     logger: config.production
@@ -194,6 +200,14 @@ export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi }: App
     afterUpload: autoTagger(askDeps),
   });
   app.register(claudeRoutes, { db, ask: askDeps, fetchImpl, viewerFrom });
+
+  // ---- The shop's online store ----
+  const storeDeps: StoreDeps = { db, pool, storeFetch, clientFor, tagPhoto: (viewer, assetId) => tagAsset(askDeps, viewer, assetId) };
+  app.register(storeRoutes, { store: storeDeps, viewerFrom });
+  if (background) {
+    const stop = startStoreRefresher(storeDeps);
+    app.addHook("onClose", async () => stop());
+  }
 
   // ---- App install (OAuth) ----
   app.get<{ Querystring: { code?: string } }>("/oauth/callback", async (req, reply) => {

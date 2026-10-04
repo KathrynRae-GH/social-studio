@@ -211,6 +211,7 @@ export function AssetsScreen() {
                   <p className="muted">Claude hasn't looked at this file yet.</p>
                 )}
                 {open.madeBy === "blur" && <p className="small muted">A blurred copy of another file.</p>}
+                {open.fromStore && <p className="small muted">A product photo copied from your online store.</p>}
 
                 {open.sensitive.length > 0 && (
                   <>

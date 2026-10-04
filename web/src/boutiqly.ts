@@ -1,4 +1,5 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
+import type { StoreView } from "../../shared/store.ts";
 import type { Me, TeamEntry } from "../../shared/roles.ts";
 import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
@@ -161,6 +162,12 @@ export const api = {
   conversation: (id: string) => call<{ conversation: ConversationView }>(`/api/conversations/${id}`),
   decideProposal: (id: string, decision: "apply" | "dismiss") =>
     call<{ proposal: ProposalView }>(`/api/proposals/${id}/${decision}`, { method: "POST", body: "{}" }),
+
+  // Online store
+  store: () => call<{ store: StoreView | null }>("/api/store"),
+  connectStore: (url: string) => call<{ store: StoreView | null }>("/api/store", { method: "PUT", body: JSON.stringify({ url }) }),
+  refreshStore: () => call<{ store: StoreView | null }>("/api/store/refresh", { method: "POST", body: "{}" }),
+  disconnectStore: () => call<{ store: null }>("/api/store", { method: "DELETE" }),
 
   // Ideas
   ideas: () => call<{ ideas: IdeaView[] }>("/api/ideas"),

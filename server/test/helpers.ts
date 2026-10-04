@@ -1,4 +1,5 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import type { StoreFetch } from "../src/store/net.ts";
 import { loadConfig, type Config } from "../src/config.ts";
 import { createDb } from "../src/db/pool.ts";
 import { migrate } from "../src/db/migrate.ts";
@@ -32,7 +33,7 @@ export const people = {
   other: { userId: "u_other", companyId: COMPANY, type: "location", role: "user", userName: "Otto Other", email: "otto@example.com", activeLocation: LOCATION },
 };
 
-export async function testApp(fetchImpl?: typeof fetch, claudeApi?: ClaudeApi) {
+export async function testApp(fetchImpl?: typeof fetch, claudeApi?: ClaudeApi, storeFetch?: StoreFetch) {
   const config: Config = {
     ...loadConfig(),
     anthropicApiKey: claudeApi ? "test-key" : "",
@@ -42,7 +43,7 @@ export async function testApp(fetchImpl?: typeof fetch, claudeApi?: ClaudeApi) {
   const { pool, db } = createDb(config.databaseUrl);
   await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
   await migrate(pool, () => {});
-  const app = buildApp({ config, db, pool, fetchImpl, claudeApi });
+  const app = buildApp({ config, db, pool, fetchImpl, claudeApi, ...(storeFetch ? { storeFetch } : {}) });
   await app.ready();
   return { app, pool, db, config };
 }

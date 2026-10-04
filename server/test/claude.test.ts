@@ -334,6 +334,41 @@ describe("designing with Claude", () => {
   });
 });
 
+describe("the online store", () => {
+  it("gives Claude real product names and links (no prices), and only saves real product links", async () => {
+    await claudeOn();
+    const brandId = (await t.pool.query("SELECT id FROM brands")).rows[0].id;
+    await t.pool.query("INSERT INTO stores (brand_id, url, status, connected_by) VALUES ($1, 'https://shop.test', 'ok', 'u_agency')", [brandId]);
+    await t.pool.query(
+      `INSERT INTO products (brand_id, external_id, title, url, description, published_at) VALUES
+       ($1, 'shopify:1', 'Linen Apron', 'https://shop.test/products/linen-apron', 'Soft linen.', now() - interval '1 day'),
+       ($1, 'shopify:2', 'Clay Mug', 'https://shop.test/products/clay-mug', 'Stoneware.', '2025-01-01')`,
+      [brandId],
+    );
+    script = [
+      useTool("list_products", { new_only: true }),
+      useTool("design_piece", { kind: "text", title: "Apron", link: "https://shop.test/products/linen-apron", captions: { threads: { text: "New: the Linen Apron" } } }, "tu_a"),
+      useTool("design_piece", { kind: "text", title: "Made up", link: "https://elsewhere.test/thing", captions: { threads: { text: "Hi" } } }, "tu_b"),
+      say("Done"),
+    ];
+    await askRaw("Post about what's new");
+    expect(calls[0]!.system!.toString() + JSON.stringify(calls[0]!.system)).toContain("Never mention prices");
+    const products = (calls[1]!.messages.at(-1)!.content as { content: string }[])[0]!.content;
+    const parsed = JSON.parse(products);
+    expect(parsed.products).toHaveLength(1);
+    expect(parsed.products[0]).toMatchObject({ name: "Linen Apron", link: "https://shop.test/products/linen-apron", new: true });
+    expect(products).not.toMatch(/price/i);
+
+    const links = await t.pool.query("SELECT title, link FROM pieces ORDER BY created_at");
+    expect(links.rows).toEqual([
+      { title: "Apron", link: "https://shop.test/products/linen-apron" },
+      { title: "Made up", link: "" },
+    ]);
+    const note = JSON.stringify(calls[3]!.messages.at(-1)!.content);
+    expect(note).toContain("link wasn't saved");
+  });
+});
+
 describe("proposals", () => {
   it("change nothing until someone taps Apply, and only once", async () => {
     await claudeOn();

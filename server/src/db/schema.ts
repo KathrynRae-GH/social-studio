@@ -99,6 +99,7 @@ export const assets = pgTable("assets", {
   sourceAssetId: uuid("source_asset_id"),
   madeBy: text("made_by", { enum: ["upload", "render", "blur"] }).notNull().default("upload"),
   purpose: text("purpose", { enum: ["content", "inspiration"] }).notNull().default("content"),
+  productId: uuid("product_id"), // a photo copied from the shop's online store
 });
 
 export const pieces = pgTable("pieces", {
@@ -278,4 +279,36 @@ export const pieceFeedback = pgTable("piece_feedback", {
   rating: integer("rating").notNull(),
   note: text("note").notNull().default(""),
   createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const stores = pgTable("stores", {
+  brandId: uuid("brand_id").primaryKey(),
+  url: text("url").notNull(),
+  platform: text("platform", { enum: ["unknown", "shopify", "other"] }).notNull().default("unknown"),
+  status: text("status", { enum: ["new", "reading", "ok", "error"] }).notNull().default("new"),
+  lastReadAt: ts("last_read_at"),
+  lastError: text("last_error"),
+  connectedBy: text("connected_by").notNull(),
+  connectedAt: ts("connected_at").notNull().defaultNow(),
+});
+
+export const products = pgTable("products", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brandId: uuid("brand_id").notNull(),
+  externalId: text("external_id").notNull(),
+  title: text("title").notNull(),
+  url: text("url").notNull(),
+  description: text("description").notNull().default(""),
+  productType: text("product_type").notNull().default(""),
+  tags: text("tags").array().notNull().default([]),
+  imageUrl: text("image_url"),
+  assetId: uuid("asset_id"),
+  assetImageUrl: text("asset_image_url"),
+  available: boolean("available"),
+  publishedAt: ts("published_at"),
+  firstSeenAt: ts("first_seen_at").notNull().defaultNow(),
+  inFirstRead: boolean("in_first_read").notNull().default(false),
+  pageLastmod: text("page_lastmod"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  removedAt: ts("removed_at"),
 });
