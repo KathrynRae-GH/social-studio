@@ -171,3 +171,21 @@ Claude (technical):
 ## Oct 4, 2026: Boutiqly communities removed (Katy)
 
 - Katy asked to remove the "Boutiqly community" channel. It's gone from the channel list, the post editor, Claude's channels and the scope (`docs/scope.md`, `CLAUDE.md`). It can come back later as one entry in `shared/channels.ts`.
+
+## Oct 4, 2026: connect the online store (Katy)
+
+Katy:
+- Owners connect their online store on Brand → Online store by typing its address. No login. Testers mostly use Shopify and Square.
+- Product photos are copied into Assets and Claude can use them, after the usual check for people and private details.
+- **Posts never mention prices**, even ones read from the store.
+- Built before the rest of the queue (preview and approvals, then plan, lock and send, then comments).
+
+Claude (technical):
+- Shopify: the store's public `/products.json`. Square Online and others: the sitemap, then each product page's search-engine details (JSON-LD), or its sharing details (Open Graph). Prices are never stored.
+- The server reads only public web addresses: no private or internal addresses (checked at connect time and on every redirect), 15-second time limit, size limits. Owner-typed addresses can't reach the server's own network.
+- Tables `stores` and `products` (migration `0009`), plus `assets.product_id`.
+- Reads happen on connect, on Refresh, and on their own every day (the hourly check re-reads stores not read for 20 hours). For other stores, only new or changed pages are re-read.
+- A product counts as **new** if the store dates it within 14 days. Stores without dates: anything that appears after the first read.
+- The main photo of up to 40 products is copied per read, newest first, with a cap of 300 per shop. When someone taps Connect or Refresh with Claude on, Claude looks at the new photos right away (about a cent each). Photos copied by the daily refresh are looked at the next time Claude needs them.
+- Claude's new `list_products` tool returns names, links, type, description, new and in-stock flags, and the photo's asset id if it's usable. No prices.
+- `design_piece` takes a `link`. It's saved only if it's a product link from the list or a page on the shop's own store.

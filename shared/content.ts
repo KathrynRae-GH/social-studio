@@ -23,6 +23,7 @@ export interface AssetDetail extends AssetView {
   madeBy: "upload" | "render" | "blur";
   purpose: "content" | "inspiration";
   sourceAssetId: string | null;
+  fromStore: boolean; // copied from the shop's online store
   usable: { ok: boolean; reason: string | null }; // can Claude design with it
 }
 

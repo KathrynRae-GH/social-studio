@@ -7,7 +7,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/pool.ts";
-import { assets, calendarEntries, captions, conversationMessages, conversations, pieces, proposals } from "../db/schema.ts";
+import { assets, calendarEntries, captions, conversationMessages, conversations, pieces, products, proposals, stores } from "../db/schema.ts";
 import { AccessError, audit, requirePermission, type Brand, type Viewer } from "../brands.ts";
 import { callClaude, ClaudePausedError, type ClaudeDeps } from "./client.ts";
 import { tryWithLock } from "../jobs.ts";
@@ -15,6 +15,7 @@ import { assetDetail, inspirationFor, ownAsset, tagAsset, usableInDesign } from 
 import { styleForDesign } from "../styles.ts";
 import { renderAndWait, type RenderDeps } from "../render.ts";
 import { recentVerdicts } from "../feedback.ts";
+import { addedAt, isNewProduct, liveProducts } from "../store/sync.ts";
 import { getPiece, setCaption } from "../library.ts";
 import { addEntries, brandTimezone, moveEntry, type CalendarDeps } from "../calendar.ts";
 import { CHANNELS, KIND_LABELS, channel, channelsFor, type Kind } from "../../../shared/channels.ts";
@@ -69,6 +70,7 @@ const RULES = `## Rules you always follow
 - Only use files that list_assets marks usable. Files may be blocked because they're marked Don't use, may show someone under 18, or have flagged private details. Never try to work around a block.
 - Files marked "no faces" may only be used where no face shows (cropped, from behind, hands, products).
 - Licensed stock is never presented as a customer.
+- Products: when the shop has a connected online store, list_products gives its real product names, descriptions and links. Use only those names and links, never made-up ones. Never mention prices in posts or captions (the owner's rule), even if you find one.
 - You never approve, schedule or post anything, and never mark a caption Final. Your pieces land as Suggested for the owner to review. Calendar and caption changes go through propose_change for the owner to apply.
 - Write in the shop's voice from its notes. Plain, warm and specific. Avoid: empower, thrive, streamline, seamless, elevate, unlock, solution.`;
 
@@ -162,7 +164,7 @@ function systemPrompt(style: StyleSetView, shopName: string): string {
 ${RULES}
 
 ## How you work on a design request
-1. Call list_assets first and pick the shop's best photos for the idea (product posts feature product photos). If nothing usable fits, tell the owner plainly what's missing (for example "I don't have photos of the new arrivals yet; upload a few in Assets") and either ask or make a clearly typographic post, never fake it with empty color blocks.
+1. If the post is about products (new arrivals, a featured piece, a restock), call list_products first: it has the real names, links and which ones are new, plus the asset id of each product's photo when it can be used. Then call list_assets and pick the shop's best photos for the idea (product posts feature product photos). If nothing usable fits, tell the owner plainly what's missing (for example "I don't have photos of the new arrivals yet; upload a few in Assets") and either ask or make a clearly typographic post, never fake it with empty color blocks.
 2. Write real copy: an on-brand headline and short lines on the slides, and **a caption for every channel this kind of piece can go to** (see Channels; the owner picks where to post later), each written for that channel, with alt text, in the shop's voice from its vibe notes and dos and don'ts. Only skip channels if the owner says so. Use only facts you have; put [placeholders] where the owner must fill in a price or date.
 3. Every design_piece call makes a real post the owner sees in their Library. Never make tests, color swatches, palette checks, layout experiments or placeholder pieces. You already know every color and font from this prompt.
 4. A carousel has 3–10 frames; a Story set has 2–10.
@@ -212,6 +214,19 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
     },
   },
   {
+    name: "list_products",
+    description:
+      "List products from the shop's connected online store, newest first: name, link, type, a short description, whether it's new (added in the last 14 days), whether it's in stock, and photo_asset_id when its photo may be used in designs. No prices, on purpose.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Words to match in names, types, tags or descriptions." },
+        new_only: { type: "boolean", description: "Only products added in the last 14 days." },
+        limit: { type: "integer", minimum: 1, maximum: 60 },
+      },
+    },
+  },
+  {
     name: "look_at_image",
     description: "See one of this shop's files (or a rendered design frame) as an image.",
     input_schema: { type: "object", properties: { asset_id: { type: "string" } }, required: ["asset_id"] },
@@ -227,6 +242,7 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         piece_id: { type: "string" },
         kind: { type: "string", enum: KINDS },
         title: { type: "string", description: "Short internal name, like 'Fall sale carousel'." },
+        link: { type: "string", description: "The product or shop page this post points to, exactly as list_products gave it. Saved with the post and used as its link where the channel takes one." },
         design: {
           type: "object",
           properties: {
@@ -280,6 +296,7 @@ const STATUS_TEXT: Record<string, string> = {
   search_library: "Looking through the library…",
   read_calendar: "Reading the calendar…",
   list_assets: "Looking through your files…",
+  list_products: "Looking through your store's products…",
   look_at_image: "Looking at a picture…",
   design_piece: "Designing and rendering…",
   propose_change: "Writing up a change for you…",
@@ -289,10 +306,12 @@ const SearchInput = z.object({ query: z.string().max(200).optional(), kind: z.en
 const CalendarInput = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 const AssetsInput = z.object({ query: z.string().max(200).optional(), only_usable: z.boolean().optional() });
 const LookInput = z.object({ asset_id: z.string() });
+const ProductsInput = z.object({ query: z.string().max(200).optional(), new_only: z.boolean().optional(), limit: z.number().int().min(1).max(60).optional() });
 const DesignInput = z.object({
   piece_id: z.string().optional(),
   kind: z.enum(KINDS as [Kind, ...Kind[]]),
   title: z.string().max(200),
+  link: z.string().max(2048).optional(),
   design: z
     .object({
       size: z.string(),
@@ -409,8 +428,12 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
         if (failed.length) console.warn(`[ask] ${failed.length} photo(s) couldn't be tagged: ${(failed[0] as PromiseRejectedResult).reason}`);
       }
       const rows = await db.select().from(assets).where(and(eq(assets.brandId, brand.id), or(eq(assets.madeBy, "upload"), eq(assets.madeBy, "blur")))).orderBy(desc(assets.createdAt)).limit(500);
+      const productIds = rows.map((r) => r.productId).filter((x): x is string => !!x);
+      const productNames = new Map(
+        productIds.length ? (await db.select({ id: products.id, title: products.title }).from(products).where(and(eq(products.brandId, brand.id), inArray(products.id, productIds)))).map((p) => [p.id, p.title]) : [],
+      );
       const list = rows
-        .map(assetDetail)
+        .map((r) => ({ ...assetDetail(r), product: r.productId ? productNames.get(r.productId) : undefined }))
         .filter((a) => (input.only_usable === false ? true : a.usable.ok))
         .filter((a) => !q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q) || a.tags.some((t) => t.includes(q)))
         .slice(0, 60)
@@ -423,9 +446,42 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
           people: a.hasPeople,
           people_rule: a.peopleRule,
           usable: a.usable.ok,
+          ...(a.product ? { store_product: a.product } : {}),
           ...(a.usable.ok ? {} : { why_not: a.usable.reason }),
         }));
       return { content: JSON.stringify(list) };
+    }
+    case "list_products": {
+      const input = ProductsInput.parse(rawInput);
+      const [store] = await db.select().from(stores).where(eq(stores.brandId, brand.id));
+      if (!store) return { content: "This shop hasn't connected its online store yet. The owner can add it on Brand → Online store. Ask the owner for product details, or use what's in the library." };
+      const q = input.query?.trim().toLowerCase();
+      const rows = (await liveProducts(db, brand.id))
+        .filter((p) => !input.new_only || isNewProduct(p))
+        .filter((p) => !q || [p.title, p.productType, p.description, ...p.tags].some((t) => t.toLowerCase().includes(q)))
+        .slice(0, input.limit ?? 30);
+      const photoIds = rows.map((p) => p.assetId).filter((x): x is string => !!x);
+      const usable = new Set(
+        photoIds.length ? (await db.select().from(assets).where(and(eq(assets.brandId, brand.id), inArray(assets.id, photoIds)))).filter((a) => usableInDesign(a).ok).map((a) => a.id) : [],
+      );
+      return {
+        content: JSON.stringify({
+          store: store.url,
+          last_read: store.lastReadAt?.toISOString().slice(0, 10) ?? "not yet",
+          products: rows.map((p) => ({
+            product_id: p.id,
+            name: p.title,
+            link: p.url,
+            type: p.productType || undefined,
+            tags: p.tags.length ? p.tags : undefined,
+            description: p.description.slice(0, 400),
+            new: isNewProduct(p),
+            added: addedAt(p)?.toISOString().slice(0, 10),
+            in_stock: p.available ?? undefined,
+            photo_asset_id: p.assetId && usable.has(p.assetId) ? p.assetId : undefined,
+          })),
+        }),
+      };
     }
     case "look_at_image": {
       const input = LookInput.parse(rawInput);
@@ -498,6 +554,19 @@ async function runTool(ctx: RunCtx, name: string, rawInput: unknown): Promise<To
       }
 
       const capNotes: string[] = [];
+      if (input.link !== undefined) {
+        const link = input.link.trim();
+        const [known] = link ? await db.select({ id: products.id }).from(products).where(and(eq(products.brandId, brand.id), eq(products.url, link))).limit(1) : [];
+        const [store] = await db.select({ url: stores.url }).from(stores).where(eq(stores.brandId, brand.id));
+        let onStore = false;
+        try {
+          onStore = !!store && new URL(link).hostname === new URL(store.url).hostname;
+        } catch {
+          /* not a web address */
+        }
+        if (!link || known || onStore) await db.update(pieces).set({ link }).where(eq(pieces.id, pieceId));
+        else capNotes.push("The link wasn't saved: use a product link exactly as list_products gave it, or one on the shop's own store.");
+      }
       const allowed = new Set(channelsFor(input.kind).map((c) => c.id as string));
       for (const [ch, cap] of Object.entries(input.captions ?? {})) {
         if (!allowed.has(ch)) {
