@@ -44,6 +44,10 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
       setConversationId(conversation.id);
       setItems(conversation.items);
       setPieces(Object.fromEntries(conversation.pieces.map((p) => [p.id, p])));
+      if (conversation.working) {
+        await followUntilDone(conversation.id);
+        setWorking("");
+      }
     } catch (e) {
       setError((e as Error).message);
     }
@@ -78,6 +82,8 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
       case "error":
         setError(e.message);
         break;
+      case "ping":
+        break;
     }
   }
 
@@ -89,13 +95,36 @@ export function AskClaude({ onClose }: { onClose: () => void }) {
     setText("");
     setItems((list) => [...list, { kind: "user", text: t }]);
     setWorking("Thinking…");
+    let chatId = conversationId;
+    let finished = false;
     try {
-      await askClaude({ conversationId, text: t }, onEvent);
-      api.conversations().then((r) => setChats(r.conversations), () => {});
+      await askClaude({ conversationId, text: t }, (e) => {
+        if (e.type === "start") chatId = e.conversationId;
+        if (e.type === "done") finished = true;
+        onEvent(e);
+      });
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setWorking("");
+      if (!chatId) setError((e as Error).message);
+    }
+    // If the connection dropped before Claude finished, Claude keeps working
+    // on the server: follow along until it's done, then show the result.
+    if (!finished && chatId) await followUntilDone(chatId);
+    api.conversations().then((r) => setChats(r.conversations), () => {});
+    setWorking("");
+  }
+
+  async function followUntilDone(id: string) {
+    setWorking("Claude is still finishing on the server…");
+    for (let i = 0; i < 120; i++) {
+      try {
+        const { conversation } = await api.conversation(id);
+        setItems(conversation.items);
+        setPieces(Object.fromEntries(conversation.pieces.map((p) => [p.id, p])));
+        if (!conversation.working) return;
+      } catch {
+        /* try again */
+      }
+      await new Promise((r) => setTimeout(r, 4000));
     }
   }
 

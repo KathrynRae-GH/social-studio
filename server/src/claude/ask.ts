@@ -529,7 +529,7 @@ export async function listConversations(db: Db, viewer: Viewer): Promise<Convers
   return rows.map((c) => ({ id: c.id, title: c.title || "New chat", updatedAt: c.updatedAt.toISOString() }));
 }
 
-export async function getConversation(db: Db, viewer: Viewer, id: string): Promise<ConversationView> {
+export async function getConversation(db: Db, viewer: Viewer, id: string, pool?: AskDeps["pool"]): Promise<ConversationView> {
   const brand = requirePermission(viewer, "use_tab");
   const c = await ownConversation(db, brand, viewer, id);
   const msgs = await db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, c.id)).orderBy(asc(conversationMessages.id));
@@ -582,7 +582,9 @@ export async function getConversation(db: Db, viewer: Viewer, id: string): Promi
       /* deleted since */
     }
   }
-  return { id: c.id, title: c.title || "New chat", items, pieces: pieceViews };
+  // Still working if another request holds this chat's lock.
+  const working = pool ? (await tryWithLock(pool, `ask:${c.id}`, async () => true)) === null : false;
+  return { id: c.id, title: c.title || "New chat", working, items, pieces: pieceViews };
 }
 
 async function append(db: Db, conversationId: string, role: "user" | "assistant", content: unknown) {

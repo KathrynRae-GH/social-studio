@@ -369,6 +369,7 @@ describe("conversations", () => {
 
     const view = (await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: agency.headers })).json().conversation;
     expect(view.items.map((i: { kind: string }) => i.kind)).toEqual(["user", "claude", "user", "claude"]);
+    expect(view.working).toBe(false); // the reply finished, so nothing is still running
 
     const colleague = await signInAs(t.app, { ...people.agency, userId: "u_ashley", userName: "Ashley" });
     expect((await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: colleague.headers })).statusCode).toBe(404);

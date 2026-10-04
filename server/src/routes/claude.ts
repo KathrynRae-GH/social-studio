@@ -135,7 +135,7 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
   // ---- Ask Claude ----
   app.get("/api/conversations", async (req) => ({ conversations: await listConversations(db, await viewerFrom(req)) }));
   app.get<{ Params: { id: string } }>("/api/conversations/:id", async (req) => ({
-    conversation: await getConversation(db, await viewerFrom(req), req.params.id),
+    conversation: await getConversation(db, await viewerFrom(req), req.params.id, deps.ask.pool),
   }));
 
   // Streams the reply as one JSON event per line.
@@ -153,12 +153,16 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     const emit = (e: AskEvent) => {
       if (!reply.raw.writableEnded) reply.raw.write(`${JSON.stringify(e)}\n`);
     };
+    // A small signal every 10 seconds so proxies and browsers don't drop a
+    // long reply (designing, rendering and redesigning can take minutes).
+    const ping = setInterval(() => emit({ type: "ping" }), 10_000);
     try {
       await ask(deps.ask, viewer, req.body ?? {}, emit);
     } catch (err) {
       emit({ type: "error", message: err instanceof AccessError ? err.message : "Something went wrong. Try again in a moment." });
       if (!(err instanceof AccessError)) req.log.error(err);
     } finally {
+      clearInterval(ping);
       reply.raw.end();
     }
   });
