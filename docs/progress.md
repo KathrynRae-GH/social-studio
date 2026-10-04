@@ -2,6 +2,18 @@
 
 Newest entry at the top. Every session ends by adding one: what got done, what's next, and anything waiting on Katy.
 
+## Oct 4, 2026: fast mode and the "colored squares" carousel
+
+- Katy: replies felt slow, and a "bold carousel of new arrivals" came back as a grid of labelled color squares with no photos and no copy.
+- Done:
+  - **Fast mode** (2x Claude cost), with an automatic fallback to normal speed when it's busy.
+  - Claude now **looks at untagged photos itself**, which fixes "no product photos". Assets also has a button for this.
+  - **New pieces need captions.**
+  - Claude knows exactly which color is which and is **forbidden from making test/swatch pieces**.
+  - A per-tool trace in the server log.
+  - 105 server tests pass.
+- Next: Katy archives the swatch piece, starts a new chat, and asks again. If it's still off, I'll read the trace in Render's logs.
+
 ## Oct 3, 2026 (late night): fresher designs
 
 - Uploaded brand fonts work live in Girl Riot (Katy confirmed).

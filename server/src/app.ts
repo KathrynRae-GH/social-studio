@@ -182,7 +182,7 @@ export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi }: App
     send: (params, onText) => (api ??= anthropicApi(config.anthropicApiKey)).send(params, onText),
   };
   const calendarDeps = { db, pool, client: clientFor };
-  const askDeps: AskDeps = { db, pool, config, api: lazyApi, render: { db, pool, clientFor }, calendar: calendarDeps };
+  const askDeps: AskDeps = { db, pool, config, fetchImpl, api: lazyApi, render: { db, pool, clientFor }, calendar: calendarDeps };
 
   // ---- Library, Calendar, Ideas, posting ----
   app.register(contentRoutes, {
@@ -191,7 +191,7 @@ export function buildApp({ config, db, pool, fetchImpl = fetch, claudeApi }: App
     viewerFrom,
     clientFor,
     fetchImpl,
-    afterUpload: autoTagger({ ...askDeps, fetchImpl }),
+    afterUpload: autoTagger(askDeps),
   });
   app.register(claudeRoutes, { db, ask: askDeps, fetchImpl, viewerFrom });
 

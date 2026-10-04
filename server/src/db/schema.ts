@@ -196,6 +196,7 @@ export const usageLedger = pgTable("usage_ledger", {
   cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
   cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
   webSearches: integer("web_searches").notNull().default(0),
+  speed: text("speed", { enum: ["standard", "fast"] }).notNull().default("standard"),
   costCents: numeric("cost_cents").notNull(),
   credits: numeric("credits").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),

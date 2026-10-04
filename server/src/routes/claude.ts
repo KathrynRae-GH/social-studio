@@ -99,8 +99,26 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     return { ok: true };
   });
   app.post<{ Params: { id: string } }>("/api/assets/:id/tag", async (req) => ({
-    asset: await tagAsset({ ...deps.ask, fetchImpl: deps.fetchImpl }, await viewerFrom(req), req.params.id),
+    asset: await tagAsset(deps.ask, await viewerFrom(req), req.params.id),
   }));
+  // Claude looks at every photo it hasn't seen yet (up to 30 at a time).
+  app.post("/api/assets/tag-new", async (req) => {
+    const viewer = await viewerFrom(req);
+    const brand = requirePermission(viewer, "use_tab");
+    const rows = (await listAssetDetails(db, viewer)).filter((a) => !a.tagged && a.madeBy === "upload" && a.purpose === "content" && a.mime.startsWith("image/")).slice(0, 30);
+    let done = 0;
+    let firstError = "";
+    for (let i = 0; i < rows.length; i += 6) {
+      const batch = await Promise.allSettled(rows.slice(i, i + 6).map((a) => tagAsset(deps.ask, viewer, a.id)));
+      for (const r of batch) {
+        if (r.status === "fulfilled") done++;
+        else firstError ||= (r.reason as Error).message;
+      }
+      if (firstError && done === 0) break; // Claude off or paused: stop early
+    }
+    void brand;
+    return { tagged: done, of: rows.length, error: firstError || null, assets: await listAssetDetails(db, viewer) };
+  });
   app.post<{ Params: { id: string } }>("/api/assets/:id/blur", async (req) => startBlur(deps.ask.render, await viewerFrom(req), req.params.id));
   app.get<{ Params: { id: string; jobId: string } }>("/api/assets/:id/blur/:jobId", async (req) =>
     finishBlur(deps.ask.render, await viewerFrom(req), req.params.id, req.params.jobId),
@@ -117,7 +135,7 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
   // ---- Ask Claude ----
   app.get("/api/conversations", async (req) => ({ conversations: await listConversations(db, await viewerFrom(req)) }));
   app.get<{ Params: { id: string } }>("/api/conversations/:id", async (req) => ({
-    conversation: await getConversation(db, await viewerFrom(req), req.params.id),
+    conversation: await getConversation(db, await viewerFrom(req), req.params.id, deps.ask.pool),
   }));
 
   // Streams the reply as one JSON event per line.
@@ -135,12 +153,16 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
     const emit = (e: AskEvent) => {
       if (!reply.raw.writableEnded) reply.raw.write(`${JSON.stringify(e)}\n`);
     };
+    // A small signal every 10 seconds so proxies and browsers don't drop a
+    // long reply (designing, rendering and redesigning can take minutes).
+    const ping = setInterval(() => emit({ type: "ping" }), 10_000);
     try {
       await ask(deps.ask, viewer, req.body ?? {}, emit);
     } catch (err) {
       emit({ type: "error", message: err instanceof AccessError ? err.message : "Something went wrong. Try again in a moment." });
       if (!(err instanceof AccessError)) req.log.error(err);
     } finally {
+      clearInterval(ping);
       reply.raw.end();
     }
   });

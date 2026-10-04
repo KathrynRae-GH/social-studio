@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { people, signInAs, testApp } from "./helpers.ts";
+import Anthropic from "@anthropic-ai/sdk";
 import { costCents, usageRows, type ClaudeApi, type ClaudeMessage, type StreamParams } from "../src/claude/client.ts";
 import { usableInDesign } from "../src/assets.ts";
 
@@ -23,7 +24,7 @@ const fakeBoutiqly = (async (url: string) => {
 }) as unknown as typeof fetch;
 
 // ---- A scripted stand-in for Claude ----
-type Script = (params: StreamParams, call: number) => Partial<ClaudeMessage> & { content: ClaudeMessage["content"] };
+type Script = (params: StreamParams, call: number) => (Partial<ClaudeMessage> & { content: ClaudeMessage["content"] }) | Error;
 let script: Script[] = [];
 let calls: StreamParams[] = [];
 const fakeClaude: ClaudeApi = {
@@ -32,7 +33,9 @@ const fakeClaude: ClaudeApi = {
     const step = script.shift();
     if (!step) throw new Error("No scripted reply left");
     const reply = step(params, calls.length);
+    if (reply instanceof Error) throw reply;
     for (const b of reply.content) if (b.type === "text") onText?.(b.text);
+    const speed = (params as { speed?: string }).speed === "fast" ? "fast" : "standard";
     return {
       id: `msg_${calls.length}`,
       type: "message",
@@ -40,7 +43,7 @@ const fakeClaude: ClaudeApi = {
       model: "claude-opus-5-5",
       stop_reason: reply.content.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn",
       stop_sequence: null,
-      usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, server_tool_use: null, iterations: null },
+      usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, server_tool_use: null, iterations: null, speed },
       ...reply,
     } as unknown as ClaudeMessage;
   },
@@ -130,8 +133,8 @@ describe("the spend guard", () => {
     const first = await askRaw("Hello");
     expect(first.events.map((e) => e.type)).toEqual(["start", "text", "done"]);
     const ledger = await t.pool.query("SELECT model, input_tokens, output_tokens, cost_cents, credits, purpose FROM usage_ledger");
-    // 1,000 input at $4/M + 200 output at $20/M = $0.008 = 0.8 cents; credits are 2x.
-    expect(ledger.rows).toEqual([{ model: "claude-opus-5-5", input_tokens: 1000, output_tokens: 200, cost_cents: "0.8000", credits: "1.6000", purpose: "ask_claude" }]);
+    // 1,000 input at $4/M + 200 output at $20/M = 0.8 cents, doubled in fast mode = 1.6; credits are 2x.
+    expect(ledger.rows).toEqual([{ model: "claude-opus-5-5", input_tokens: 1000, output_tokens: 200, cost_cents: "1.6000", credits: "3.2000", purpose: "ask_claude" }]);
 
     script = [say("Again")];
     await askRaw("And again");
@@ -143,7 +146,10 @@ describe("the spend guard", () => {
   });
 
   it("prices each model run at its own rates, including web searches", () => {
-    expect(costCents({ model: "claude-opus-5-5", inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 0, webSearches: 10 })).toBeCloseTo(400 + 20 + 10, 6);
+    const u = { model: "claude-opus-5-5", inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 0, webSearches: 10 };
+    expect(costCents({ ...u, speed: "standard" })).toBeCloseTo(400 + 20 + 10, 6);
+    // Fast mode doubles the tokens, not the web searches.
+    expect(costCents({ ...u, speed: "fast" })).toBeCloseTo(800 + 40 + 10, 6);
     const rows = usageRows(
       {
         model: "claude-opus-4-8",
@@ -174,12 +180,69 @@ describe("the spend guard", () => {
   });
 });
 
+describe("making a real post", () => {
+  const tagReply: Script = () => ({
+    content: [{ type: "text", text: JSON.stringify({ description: "New sweaters on a rack", tags: ["sweater"], has_people: false, possible_minor: false, sensitive: [] }), citations: null }] as ClaudeMessage["content"],
+  });
+
+  it("looks at photos uploaded while Claude was off before listing them", async () => {
+    const photo = await upload(); // uploaded while Claude is off: never tagged
+    await claudeOn();
+    script = [useTool("list_assets", {}), tagReply, say("Found it.")];
+    const { events } = await askRaw("What photos do I have?");
+    expect(events.some((e) => e.type === "status" && e.text.includes("Looking at 1 new photo"))).toBe(true);
+    const listed = JSON.parse((calls[2]!.messages.at(-1)!.content as { content: string }[])[0]!.content);
+    expect(listed).toEqual([expect.objectContaining({ asset_id: photo, usable: true, description: "New sweaters on a rack" })]);
+  });
+
+  it("won't save a new piece without captions, and tells Claude every color", async () => {
+    await claudeOn();
+    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
+    await askRaw("A post");
+    const result = (calls[1]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
+    expect(result.is_error).toBe(true);
+    expect(result.content).toContain("needs its captions");
+    expect((await t.pool.query("SELECT 1 FROM pieces")).rowCount).toBe(0);
+    const system = (calls[0]!.system as { text: string }[])[0]!.text;
+    expect(system).toContain("var(--brand-color-1) = Page Cream #fbf8f3 (background)");
+    expect(system).toContain("Never make tests, color swatches, palette checks");
+  });
+});
+
+describe("fast mode", () => {
+  it("asks for fast mode, meters it at 2x, and falls back to normal speed when it's busy", async () => {
+    await claudeOn();
+    script = [say("Quick!")];
+    await askRaw("Hello");
+    expect(calls[0]).toMatchObject({ speed: "fast" });
+    expect(calls[0]!.betas).toEqual(["server-side-fallback-2026-07-01", "fast-mode-2026-02-01"]);
+
+    script = [() => new Anthropic.RateLimitError(429, {}, "fast mode is busy", new Headers()), say("Still here.")];
+    const { events } = await askRaw("Again");
+    expect(events.find((e) => e.type === "error")).toBeUndefined();
+    expect(calls[2]!.speed).toBeUndefined();
+    expect(calls[2]!.betas).toEqual(["server-side-fallback-2026-07-01"]);
+
+    const ledger = await t.pool.query("SELECT speed, cost_cents FROM usage_ledger ORDER BY id");
+    // 1,000 input + 200 output = 0.8 cents at normal speed, 1.6 in fast mode.
+    expect(ledger.rows).toEqual([{ speed: "fast", cost_cents: "1.6000" }, { speed: "standard", cost_cents: "0.8000" }]);
+  });
+
+  it("doesn't retry other errors", async () => {
+    await claudeOn();
+    script = [() => new Anthropic.BadRequestError(400, {}, "messages: bad input", new Headers())];
+    const { events } = await askRaw("Hello");
+    expect(events.find((e) => e.type === "error")?.message).toContain("Something went wrong");
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe("designing with Claude", () => {
   it("only uses files the rules allow", async () => {
     const photo = await upload(); // before Claude is on, so it isn't tagged in the background
     await claudeOn();
     const design = { size: "portrait", css: "", frames: [{ html: `<img class="photo" src="asset:${photo}">` }] };
-    script = [useTool("design_piece", { kind: "post", title: "Window", design }), say("Done")];
+    script = [useTool("design_piece", { kind: "post", title: "Window", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("Done")];
     await askRaw("Make a post with the window photo");
     const toolResult = (calls[1]!.messages.at(-1)!.content as { type: string; is_error?: boolean; content: string }[])[0]!;
     expect(toolResult.is_error).toBe(true);
@@ -231,7 +294,7 @@ describe("designing with Claude", () => {
     await markTagged(photo);
     await t.pool.query("INSERT INTO brands (location_id, company_id) VALUES ('loc_other', 'co_boutiqly')");
     await t.pool.query("UPDATE assets SET brand_id = (SELECT id FROM brands WHERE location_id = 'loc_other')");
-    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${photo}">` }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${photo}">` }] } }), say("ok")];
     await askRaw("Use that photo");
     const toolResult = (calls[1]!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(toolResult.is_error).toBe(true);
@@ -242,7 +305,7 @@ describe("designing with Claude", () => {
     await claudeOn();
     await t.app.inject({ method: "PUT", url: "/api/style", headers: agency.headers, payload: { colors: [{ name: "Riot Pink", hex: "#ff3399", role: "accent" }, { name: "Ink", hex: "#111111", role: "text" }], headingFont: "Bebas Neue" } });
     const design = { size: "story", css: "", frames: [{ html: "<h1>Hi</h1>" }] };
-    script = [useTool("design_piece", { kind: "story", title: "a", design }), say("ok"), useTool("design_piece", { kind: "story", title: "b", design }), say("ok")];
+    script = [useTool("design_piece", { kind: "story", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok"), useTool("design_piece", { kind: "story", title: "b", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design }), say("ok")];
     await askRaw("Story please");
     expect(renderedDocs[0]![0]).toContain("--brand-accent: #de771f"); // still the fallback
 
@@ -306,6 +369,7 @@ describe("conversations", () => {
 
     const view = (await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: agency.headers })).json().conversation;
     expect(view.items.map((i: { kind: string }) => i.kind)).toEqual(["user", "claude", "user", "claude"]);
+    expect(view.working).toBe(false); // the reply finished, so nothing is still running
 
     const colleague = await signInAs(t.app, { ...people.agency, userId: "u_ashley", userName: "Ashley" });
     expect((await t.app.inject({ url: `/api/conversations/${conversationId}`, headers: colleague.headers })).statusCode).toBe(404);
@@ -404,7 +468,7 @@ describe("uploaded fonts", () => {
     const style = (await t.app.inject({ method: "POST", url: "/api/style/approve", headers: agency.headers })).json().style;
     expect(style.customFonts).toEqual([{ id, family: "Riot Sans", weight: 400, italic: false, format: "woff2" }]);
 
-    script = [useTool("design_piece", { kind: "post", title: "a", design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "a", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: "<h1>Hi</h1>" }] } }), say("ok")];
     await askRaw("A post please");
     const doc = renderedDocs[0]![0]!;
     expect(doc).toContain(`@font-face { font-family: "Riot Sans"; src: url("https://fonts.render.local/${id}") format("woff2")`);
@@ -462,7 +526,7 @@ describe("the inspiration board", () => {
     const id = (await t.app.inject({ url: "/api/assets", headers: agency.headers })).json().assets[0].id;
     await markTagged(id);
     const conversationId = first.events[0].conversationId;
-    script = [useTool("design_piece", { kind: "post", title: "x", design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${id}">` }] } }), say("ok")];
+    script = [useTool("design_piece", { kind: "post", title: "x", captions: { instagram: { text: "Hi there", alt_text: "A post" } }, design: { size: "portrait", css: "", frames: [{ html: `<img src="asset:${id}">` }] } }), say("ok")];
     await askRaw("Use that one", conversationId);
     const toolResult = (calls.at(-1)!.messages.at(-1)!.content as { content: string; is_error?: boolean }[])[0]!;
     expect(toolResult.is_error).toBe(true);

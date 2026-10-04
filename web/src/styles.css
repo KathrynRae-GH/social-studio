@@ -275,3 +275,17 @@ h3 { font-size: 16px; }
 .board-item img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); background: var(--border); }
 .board-add { display: flex; align-items: center; justify-content: center; text-align: center; aspect-ratio: 4 / 5; border: 2px dashed var(--border); border-radius: 8px; padding: 8px; font-size: 13px; font-weight: 600; color: var(--green); cursor: pointer; }
 .board-add:hover { border-color: var(--green); }
+/* Large post preview in the post editor */
+.post-preview { margin: 4px 0 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.preview-frame { position: relative; width: min(520px, 100%); background: var(--border); border-radius: 10px; overflow: hidden; outline: none; }
+.preview-frame:focus-visible { box-shadow: 0 0 0 3px var(--green); }
+.preview-media { display: block; width: 100%; height: auto; max-height: 75vh; object-fit: contain; background: #000; }
+.preview-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgb(255 255 255 / 0.9); color: var(--text); font-size: 26px; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); }
+.preview-nav.prev { left: 10px; }
+.preview-nav.next { right: 10px; }
+.preview-count { position: absolute; top: 10px; right: 10px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 2px 10px; }
+.preview-dots { display: flex; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: var(--border); cursor: pointer; }
+.dot.active { background: var(--green); }
+.preview-caption { width: min(520px, 100%); }
+.preview-caption p { margin: 4px 0 0; white-space: pre-wrap; line-height: 1.45; }

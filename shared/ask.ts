@@ -16,7 +16,8 @@ export type AskEvent =
   | { type: "piece"; piece: PieceView }
   | { type: "proposal"; proposal: ProposalView }
   | { type: "done"; costCents: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "ping" }; // keeps the connection open while Claude works
 
 export type ChatItem =
   | { kind: "user"; text: string }
@@ -32,6 +33,7 @@ export interface ConversationSummary {
 
 export interface ConversationView {
   id: string;
+  working: boolean; // Claude is still answering the last message
   title: string;
   items: ChatItem[];
   pieces: PieceView[];
@@ -42,4 +44,5 @@ export interface ClaudeStatus {
   capCents: number;
   spentCents: number;
   connected: boolean;
+  fastMode: boolean;
 }

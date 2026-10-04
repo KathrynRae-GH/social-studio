@@ -8,7 +8,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../db/pool.ts";
 import { brands, usageLedger } from "../db/schema.ts";
 import { AccessError, type Brand } from "../brands.ts";
-import { CLAUDE_PRICES, UNKNOWN_MODEL_PRICE, WEB_SEARCH_DOLLARS_PER_1000, type Config, type ModelPrice } from "../config.ts";
+import { CLAUDE_PRICES, FAST_MODE_MULTIPLIER, UNKNOWN_MODEL_PRICE, WEB_SEARCH_DOLLARS_PER_1000, type Config, type ModelPrice } from "../config.ts";
 
 export type StreamParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type ClaudeMessage = Anthropic.Beta.BetaMessage;
@@ -57,6 +57,7 @@ export interface UsageNumbers {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   webSearches: number;
+  speed: "standard" | "fast";
 }
 
 export function priceFor(model: string): ModelPrice {
@@ -66,9 +67,8 @@ export function priceFor(model: string): ModelPrice {
 // Cost in cents, unrounded (the ledger keeps four decimal places).
 export function costCents(u: UsageNumbers): number {
   const p = priceFor(u.model);
-  const dollars =
-    (u.inputTokens * p.input + u.outputTokens * p.output + u.cacheReadTokens * p.cacheRead + u.cacheWriteTokens * p.cacheWrite) / 1_000_000 +
-    (u.webSearches * WEB_SEARCH_DOLLARS_PER_1000) / 1000;
+  const tokens = (u.inputTokens * p.input + u.outputTokens * p.output + u.cacheReadTokens * p.cacheRead + u.cacheWriteTokens * p.cacheWrite) / 1_000_000;
+  const dollars = tokens * (u.speed === "fast" ? FAST_MODE_MULTIPLIER : 1) + (u.webSearches * WEB_SEARCH_DOLLARS_PER_1000) / 1000;
   return dollars * 100;
 }
 
@@ -76,6 +76,8 @@ export function costCents(u: UsageNumbers): number {
 // second model). Each run is priced at its own model's rates.
 export function usageRows(message: ClaudeMessage, requestedModel: string): UsageNumbers[] {
   const u = message.usage;
+  // Priced by the speed Anthropic says the call actually ran at.
+  const speed: UsageNumbers["speed"] = u.speed === "fast" ? "fast" : "standard";
   const searches = u.server_tool_use?.web_search_requests ?? 0;
   const runs = (u.iterations ?? []).filter(
     (it): it is Anthropic.Beta.BetaMessageIterationUsage | Anthropic.Beta.BetaFallbackMessageIterationUsage =>
@@ -85,7 +87,7 @@ export function usageRows(message: ClaudeMessage, requestedModel: string): Usage
     const byModel = new Map<string, UsageNumbers>();
     for (const r of runs) {
       const model = r.model ?? requestedModel;
-      const row = byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 0 };
+      const row = byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 0, speed };
       row.inputTokens += r.input_tokens;
       row.outputTokens += r.output_tokens;
       row.cacheReadTokens += r.cache_read_input_tokens ?? 0;
@@ -104,6 +106,7 @@ export function usageRows(message: ClaudeMessage, requestedModel: string): Usage
       cacheReadTokens: u.cache_read_input_tokens ?? 0,
       cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
       webSearches: searches,
+      speed,
     },
   ];
 }
@@ -149,6 +152,7 @@ export async function recordUsage(deps: ClaudeDeps, ctx: CallContext, rows: Usag
       cacheReadTokens: u.cacheReadTokens,
       cacheWriteTokens: u.cacheWriteTokens,
       webSearches: u.webSearches,
+      speed: u.speed,
       costCents: cents.toFixed(4),
       credits: (cents * deps.config.creditMarkup).toFixed(4),
     });
@@ -157,6 +161,15 @@ export async function recordUsage(deps: ClaudeDeps, ctx: CallContext, rows: Usag
 }
 
 // ---- The call ----
+
+// Fast mode is a research preview with its own rate limit: when it's busy
+// (429), or doesn't combine with something in the request (a 400 about
+// speed or fast mode), the call is made again at normal speed.
+export function fastModeRefused(err: unknown): boolean {
+  if (!(err instanceof Anthropic.APIError)) return false;
+  if (err.status === 429) return true;
+  return err.status === 400 && /speed|fast/i.test(err.message);
+}
 
 export interface CallOptions {
   system: Anthropic.Beta.BetaTextBlockParam[];
@@ -171,8 +184,7 @@ export interface CallOptions {
 export async function callClaude(deps: ClaudeDeps, ctx: CallContext, opts: CallOptions): Promise<{ message: ClaudeMessage; costCents: number }> {
   await assertCanSpend(deps, ctx.brand.id);
   const model = deps.config.claudeModel;
-  const message = await deps.api.send(
-    {
+  const params: StreamParams = {
       model,
       max_tokens: opts.maxTokens ?? 32000,
       system: opts.system,
@@ -187,9 +199,20 @@ export async function callClaude(deps: ClaudeDeps, ctx: CallContext, opts: CallO
       // the same call; usageRows prices that run at its own model's rates.
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-    },
-    opts.onText,
-  );
+  };
+  let message: ClaudeMessage;
+  if (deps.config.claudeFastMode) {
+    // Same speed on every call, so the prompt cache stays valid.
+    try {
+      message = await deps.api.send({ ...params, speed: "fast", betas: [...(params.betas ?? []), "fast-mode-2026-02-01"] }, opts.onText);
+    } catch (err) {
+      if (!fastModeRefused(err)) throw err;
+      console.warn(`[claude] fast mode not available (${(err as Error).message.slice(0, 200)}); answering at normal speed`);
+      message = await deps.api.send(params, opts.onText);
+    }
+  } else {
+    message = await deps.api.send(params, opts.onText);
+  }
   const cents = await recordUsage(deps, ctx, usageRows(message, model));
   return { message, costCents: cents };
 }
@@ -201,6 +224,7 @@ export interface ClaudeSettings {
   capCents: number;
   spentCents: number;
   connected: boolean;
+  fastMode: boolean;
 }
 
 export async function claudeSettings(deps: ClaudeDeps, brand: Brand): Promise<ClaudeSettings> {
@@ -210,5 +234,6 @@ export async function claudeSettings(deps: ClaudeDeps, brand: Brand): Promise<Cl
     capCents: b?.claudeCapCents ?? 0,
     spentCents: Math.round((await spentThisMonth(deps.db, brand.id)) * 100) / 100,
     connected: !!deps.config.anthropicApiKey,
+    fastMode: deps.config.claudeFastMode,
   };
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { AssetView, CaptionView, PieceView } from "../../../shared/content.ts";
 import { KIND_LABELS, ROUTE_LABELS, channelsFor, type Kind } from "../../../shared/channels.ts";
 import { api } from "../boutiqly.ts";
+import { PostPreview } from "../components/PostPreview.tsx";
 import { ErrorNote, Thumb, addDays, friendlyDate, friendlyTime, todayIn } from "../components/bits.tsx";
 
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
@@ -20,6 +21,7 @@ const KIND_HELP: Record<Kind, string> = {
 };
 
 interface Props {
+  shopName?: string;
   piece: PieceView | null;
   timezone: string;
   onClose: () => void;
@@ -28,7 +30,7 @@ interface Props {
 
 const emptyCaption: CaptionView = { text: "", altText: "", status: "draft" };
 
-export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Props) {
+export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopName = "" }: Props) {
   const [piece, setPiece] = useState<PieceView | null>(initial);
   const [kind, setKind] = useState<Kind>(initial?.kind ?? "post");
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -145,6 +147,8 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
           <h2>{piece ? "Edit post" : "New post"}</h2>
           <button className="btn-link" onClick={onClose}>Close</button>
         </div>
+
+        <PostPreview files={files} caption={current.text} channelName={activeChannel?.name ?? ""} shopName={shopName} />
 
         <div className="field-row">
           <label className="field">

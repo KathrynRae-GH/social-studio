@@ -125,6 +125,25 @@ export function AssetsScreen() {
         Claude looks at each photo when it's uploaded (while Claude is on) and flags people and private details. Claude only designs with files marked "Claude can use".
       </p>
 
+      {(list ?? []).some((a) => !a.tagged && a.madeBy === "upload" && a.purpose === "content" && a.mime.startsWith("image/")) && (
+        <p className="notice small">
+          Some photos haven't been looked at yet, so Claude can't use them.{" "}
+          <button
+            className="btn-link small"
+            disabled={!!busy}
+            onClick={() =>
+              void run("Claude is looking at your new photos…", async () => {
+                const r = await api.tagNewAssets();
+                setList(r.assets);
+                if (r.error && r.tagged === 0) throw new Error(r.error);
+              })
+            }
+          >
+            Have Claude look at them now
+          </button>
+        </p>
+      )}
+
       <div className="filters" role="tablist" aria-label="Filter files">
         {FILTERS.map((f) => (
           <button key={f.id} role="tab" aria-selected={filter === f.id} className={filter === f.id ? "chip-tab active" : "chip-tab"} onClick={() => setFilter(f.id)}>

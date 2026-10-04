@@ -43,6 +43,7 @@ export function ClaudePanel({ me }: { me: Me }) {
           ? "On. Claude can design, write and look at this shop's files."
           : "Off. Nothing Claude does is available, and nothing is spent."}
       </p>
+      {status.fastMode && <p className="muted small">Fast mode on: replies come back faster, at twice the Claude cost.</p>}
       {!status.connected && <p className="notice attention small">The Claude API key isn't set in Render yet, so Claude can't run.</p>}
       <p className="small">
         Used this month: <strong>{dollars(status.spentCents)}</strong> of {dollars(status.capCents)} in Claude cost. Claude pauses at the limit.

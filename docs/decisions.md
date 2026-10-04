@@ -120,3 +120,18 @@ Claude (technical):
 - The design guidance now covers composition, scale contrast, a graphic language drawn in code (shapes, stickers, squiggles, texture, color blocking, type and photo treatments), carousel rules, and a list of things that make a post look basic.
 - After every render, Claude sees the frames. The first draft of each piece must be critiqued against a checklist and redesigned before Claude replies; at most three drafts per piece per reply.
 - Ask Claude runs at effort "xhigh" (was "high").
+
+## Oct 4, 2026: fast mode, and fixing "a map of colored squares"
+
+Katy:
+- Design replies felt slow; she chose **fast mode** (same model, up to ~2.5x faster writing, **2x the Claude cost**). She didn't pick the free speed-ups or an optional redesign round.
+
+Claude (technical):
+- Fast mode is sent on every call (`speed: "fast"`, beta `fast-mode-2026-02-01`) so the prompt cache stays valid. It's on unless `CLAUDE_FAST_MODE=off` is set in Render. If fast mode is busy (429), or doesn't combine with the request (a 400 about speed), the call retries once at normal speed.
+- The ledger prices each call by the speed Anthropic reports it ran at (`usage_ledger.speed`, migration `0007`): fast doubles the token cost; web searches aren't doubled.
+- Katy's first carousel after the design upgrade was a color-swatch test with no photos and no copy. Fixes:
+  - Claude looks at untagged photos itself before listing files (up to 12 at a time). Photos uploaded while Claude was off had never been looked at, so none were usable.
+  - The Assets screen offers "Have Claude look at them now" for untagged photos (up to 30).
+  - A new piece is refused unless it has captions.
+  - Claude's instructions now map every color variable to its color, forbid test, swatch or placeholder pieces, and set a working order: photos first, real copy, then the design.
+  - Each tool call writes a one-line trace to the server log, so odd results can be diagnosed from Render's logs.
