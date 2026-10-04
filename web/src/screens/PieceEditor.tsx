@@ -3,6 +3,7 @@ import type { AssetView, CaptionView, PieceView } from "../../../shared/content.
 import { KIND_LABELS, ROUTE_LABELS, channelsFor, type Kind } from "../../../shared/channels.ts";
 import { api } from "../boutiqly.ts";
 import { PostPreview } from "../components/PostPreview.tsx";
+import { Verdict } from "../components/Verdict.tsx";
 import { ErrorNote, Thumb, addDays, friendlyDate, friendlyTime, todayIn } from "../components/bits.tsx";
 
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
@@ -142,13 +143,22 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved, shopNa
 
   return (
     <div className="overlay" role="dialog" aria-label={piece ? "Edit post" : "New post"}>
-      <div className="sheet">
+      <div className={files.length ? "sheet wide" : "sheet"}>
         <div className="sheet-head">
           <h2>{piece ? "Edit post" : "New post"}</h2>
           <button className="btn-link" onClick={onClose}>Close</button>
         </div>
 
-        <PostPreview files={files} caption={current.text} channelName={activeChannel?.name ?? ""} shopName={shopName} />
+        <PostPreview
+          files={files}
+          channels={channels.map((c) => ({ id: c.id, name: c.name }))}
+          captions={Object.fromEntries(Object.entries(captions).map(([k, v]) => [k, v.text]))}
+          active={activeChannel?.id ?? ""}
+          onActive={setActive}
+          shopName={shopName}
+        >
+          {piece && <Verdict pieceId={piece.id} />}
+        </PostPreview>
 
         <div className="field-row">
           <label className="field">

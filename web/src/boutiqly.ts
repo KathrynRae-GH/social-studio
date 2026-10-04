@@ -1,6 +1,6 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { Me, TeamEntry } from "../../shared/roles.ts";
-import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { ApproveResult, DraftResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
 import type { CustomFont, StyleColor, StyleSetView } from "../../shared/design.ts";
 
@@ -153,6 +153,9 @@ export const api = {
   blurAsset: (id: string) => call<{ jobId: string }>(`/api/assets/${id}/blur`, { method: "POST", body: "{}" }),
   blurResult: (id: string, jobId: string) =>
     call<{ status: "pending" | "failed" | "done"; asset?: AssetDetail; error?: string }>(`/api/assets/${id}/blur/${jobId}`),
+  feedback: (id: string) => call<{ feedback: FeedbackView[] }>(`/api/pieces/${id}/feedback`),
+  addFeedback: (id: string, rating: 1 | -1, note: string) =>
+    call<{ feedback: FeedbackView[] }>(`/api/pieces/${id}/feedback`, { method: "POST", body: JSON.stringify({ rating, note }) }),
   pieceRender: (id: string) => call<{ state: "done" | "pending" | "failed"; piece: PieceView }>(`/api/pieces/${id}/render`, { method: "POST", body: "{}" }),
   conversations: () => call<{ conversations: ConversationSummary[] }>("/api/conversations"),
   conversation: (id: string) => call<{ conversation: ConversationView }>(`/api/conversations/${id}`),

@@ -26,6 +26,14 @@ export interface AssetDetail extends AssetView {
   usable: { ok: boolean; reason: string | null }; // can Claude design with it
 }
 
+// One person's verdict on a post.
+export interface FeedbackView {
+  rating: 1 | -1;
+  note: string;
+  by: string;
+  at: string;
+}
+
 export interface CaptionView {
   text: string;
   altText: string;

@@ -268,3 +268,14 @@ export const brandFonts = pgTable("brand_fonts", {
   uploadedBy: text("uploaded_by").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
+
+export const pieceFeedback = pgTable("piece_feedback", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  brandId: uuid("brand_id").notNull(),
+  pieceId: uuid("piece_id").notNull(),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull().default(""),
+  rating: integer("rating").notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});

@@ -583,3 +583,21 @@ describe("variety", () => {
     expect((calls[0]!.system as { text: string }[])[0]!.text).toContain("a caption for every channel this kind of piece can go to");
   });
 });
+
+describe("love it / not this", () => {
+  it("saves verdicts per shop and puts them in front of Claude", async () => {
+    await claudeOn();
+    const pieceId = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "post", title: "Bandana post" } })).json().piece.id;
+    const res = await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/feedback`, headers: agency.headers, payload: { rating: -1, note: "Too busy, the text is hard to read" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().feedback).toEqual([expect.objectContaining({ rating: -1, note: "Too busy, the text is hard to read", by: "Katy Agency" })]);
+    expect((await t.app.inject({ method: "POST", url: `/api/pieces/${pieceId}/feedback`, headers: agency.headers, payload: { rating: 5 } })).statusCode).toBe(400);
+    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
+    expect((await t.app.inject({ url: `/api/pieces/${pieceId}/feedback`, headers: elsewhere.headers })).statusCode).toBe(404);
+
+    script = [say("Noted.")];
+    await askRaw("Make a post");
+    const sent = calls[0]!.messages[0]!.content as { type: string; text?: string }[];
+    expect(sent.find((b) => b.text?.includes("verdicts on recent posts"))!.text).toContain('NOT THIS: "Bandana post" (post) — "Too busy, the text is hard to read"');
+  });
+});
