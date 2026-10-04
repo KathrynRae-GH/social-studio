@@ -15,6 +15,7 @@ import { MAX_FONT_BYTES, deleteFont, fontFile, listFonts, uploadFont } from "../
 import { getPiece } from "../library.ts";
 import { addFeedback, feedbackFor } from "../feedback.ts";
 import { planCalendar } from "../planner.ts";
+import { addComment, commentsFor, deleteComment, restoreVersion, sendEdits } from "../comments.ts";
 import type { AskEvent } from "../../../shared/ask.ts";
 
 interface Deps {
@@ -58,6 +59,19 @@ export async function claudeRoutes(app: FastifyInstance, deps: Deps) {
       await audit(db, viewer, "claude.settings", changes);
     }
     return claudeSettings(deps.ask, brand);
+  });
+
+  // ---- Comments on a post → Claude's edits, and going back a version ----
+  app.get<{ Params: { id: string } }>("/api/pieces/:id/comments", async (req) => commentsFor(db, await viewerFrom(req), req.params.id));
+  app.post<{ Params: { id: string }; Body: Body }>("/api/pieces/:id/comments", async (req) => addComment(db, await viewerFrom(req), req.params.id, req.body ?? {}));
+  app.delete<{ Params: { id: string; commentId: string } }>("/api/pieces/:id/comments/:commentId", async (req) =>
+    deleteComment(db, await viewerFrom(req), req.params.id, Number(req.params.commentId)),
+  );
+  app.post<{ Params: { id: string } }>("/api/pieces/:id/send-edits", async (req) => sendEdits(deps.ask, await viewerFrom(req), req.params.id));
+  app.post<{ Params: { id: string; versionId: string } }>("/api/pieces/:id/versions/:versionId/restore", async (req) => {
+    const viewer = await viewerFrom(req);
+    await restoreVersion(db, viewer, req.params.id, Number(req.params.versionId));
+    return { piece: await getPiece(db, viewer, req.params.id) };
   });
 
   // ---- Plan my calendar (Claude places approved posts) ----

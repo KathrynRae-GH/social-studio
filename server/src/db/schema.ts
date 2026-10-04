@@ -116,6 +116,9 @@ export const pieces = pgTable("pieces", {
   approvedBy: text("approved_by"),
   approvedByName: text("approved_by_name").notNull().default(""),
   approvedChannels: text("approved_channels").array().notNull().default([]),
+  editingStartedAt: ts("editing_started_at"),
+  editReply: text("edit_reply").notNull().default(""),
+  editError: text("edit_error"),
   createdBy: text("created_by").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -317,4 +320,37 @@ export const products = pgTable("products", {
   pageLastmod: text("page_lastmod"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   removedAt: ts("removed_at"),
+});
+
+export const pieceComments = pgTable("piece_comments", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  brandId: uuid("brand_id").notNull(),
+  pieceId: uuid("piece_id").notNull(),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull().default(""),
+  text: text("text").notNull(),
+  status: text("status", { enum: ["open", "sent", "done"] }).notNull().default("open"),
+  conversationId: uuid("conversation_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  sentAt: ts("sent_at"),
+});
+
+export interface PieceSnapshot {
+  kind: string;
+  title: string;
+  link: string;
+  assetIds: string[];
+  design: Design | null;
+  captions: Record<string, { text: string; altText: string }>;
+}
+
+export const pieceVersions = pgTable("piece_versions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  brandId: uuid("brand_id").notNull(),
+  pieceId: uuid("piece_id").notNull(),
+  snapshot: jsonb("snapshot").$type<PieceSnapshot>().notNull(),
+  reason: text("reason").notNull().default(""),
+  createdBy: text("created_by").notNull(),
+  createdByName: text("created_by_name").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
 });

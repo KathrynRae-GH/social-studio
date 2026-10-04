@@ -1,7 +1,7 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { StoreView } from "../../shared/store.ts";
 import type { Me, TeamEntry } from "../../shared/roles.ts";
-import type { PlanResult, SendResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
+import type { PieceComments, PlanResult, SendResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
 import type { CustomFont, StyleColor, StyleSetView } from "../../shared/design.ts";
 
@@ -124,6 +124,12 @@ export const api = {
   lockAll: () => call<{ locked: number }>("/api/calendar/lock-all", { method: "POST", body: "{}" }),
   sendLocked: () => call<SendResult>("/api/calendar/send", { method: "POST", body: "{}" }),
   plan: (weeks: number, more: boolean) => call<PlanResult>("/api/calendar/plan", { method: "POST", body: JSON.stringify({ weeks, continue: more }) }),
+  piece: (id: string) => call<{ piece: PieceView }>(`/api/pieces/${id}`),
+  comments: (id: string) => call<PieceComments>(`/api/pieces/${id}/comments`),
+  addComment: (id: string, text: string) => call<PieceComments>(`/api/pieces/${id}/comments`, { method: "POST", body: JSON.stringify({ text }) }),
+  deleteComment: (id: string, commentId: number) => call<PieceComments>(`/api/pieces/${id}/comments/${commentId}`, { method: "DELETE" }),
+  sendEdits: (id: string) => call<PieceComments>(`/api/pieces/${id}/send-edits`, { method: "POST", body: "{}" }),
+  restoreVersion: (id: string, versionId: number) => call<{ piece: PieceView }>(`/api/pieces/${id}/versions/${versionId}/restore`, { method: "POST", body: "{}" }),
   approvePiece: (id: string, channels: string[]) => call<{ piece: PieceView }>(`/api/pieces/${id}/approve`, { method: "POST", body: JSON.stringify({ channels }) }),
   unapprovePiece: (id: string) => call<{ piece: PieceView }>(`/api/pieces/${id}/approve`, { method: "DELETE" }),
   markPosted: (id: string) => call<{ entry: EntryView }>(`/api/calendar/${id}/posted`, { method: "POST", body: "{}" }),

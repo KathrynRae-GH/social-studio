@@ -333,6 +333,80 @@ describe("designing with Claude", () => {
   });
 });
 
+describe("comments into edits", () => {
+  async function approvedPost() {
+    const id = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title: "Hours post" } })).json().piece.id as string;
+    await t.app.inject({ method: "PUT", url: `/api/pieces/${id}/captions/threads`, headers: agency.headers, payload: { text: "We're open 9 to 5" } });
+    await t.app.inject({ method: "POST", url: `/api/pieces/${id}/approve`, headers: agency.headers, payload: { channels: ["threads"] } });
+    return id;
+  }
+  const comment = (id: string, text: string, headers = agency.headers) => t.app.inject({ method: "POST", url: `/api/pieces/${id}/comments`, headers, payload: { text } });
+  async function settled(id: string) {
+    for (let i = 0; i < 100; i++) {
+      const c = (await t.app.inject({ url: `/api/pieces/${id}/comments`, headers: agency.headers })).json();
+      if (!c.editing) return c;
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    throw new Error("The edit never finished");
+  }
+
+  it("sends all comments at once; the post goes back to Suggested, and Go back restores it", async () => {
+    await claudeOn();
+    const id = await approvedPost();
+    await t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId: id, channels: ["threads"], date: "2030-10-20", time: "09:00" } });
+    await comment(id, "Say we're open late on Fridays");
+    expect((await comment(id, "Add a wave emoji")).json().comments).toHaveLength(2);
+
+    script = [
+      useTool("design_piece", { piece_id: id, kind: "text", title: "Hours post", captions: { threads: { text: "We're open 9 to 5, and till 8 on Fridays 👋" } } }),
+      say("Added Friday's late hours and a wave."),
+    ];
+    const sent = await t.app.inject({ method: "POST", url: `/api/pieces/${id}/send-edits`, headers: agency.headers });
+    expect(sent.statusCode, sent.body).toBe(200);
+    const done = await settled(id);
+    expect(done).toMatchObject({ editing: false, reply: "Added Friday's late hours and a wave.", error: null });
+    expect(done.comments.map((c: { status: string }) => c.status)).toEqual(["done", "done"]);
+    expect(done.versions).toHaveLength(1);
+    expect(JSON.stringify(calls[0]!.messages)).toContain("Say we're open late on Fridays");
+
+    const piece = (await t.app.inject({ url: `/api/pieces/${id}`, headers: agency.headers })).json().piece;
+    expect(piece).toMatchObject({ approval: null, onCalendar: [] });
+    expect(piece.captions.threads).toMatchObject({ text: "We're open 9 to 5, and till 8 on Fridays 👋", status: "draft" });
+
+    const back = await t.app.inject({ method: "POST", url: `/api/pieces/${id}/versions/${done.versions[0].id}/restore`, headers: agency.headers });
+    expect(back.json().piece.captions.threads.text).toBe("We're open 9 to 5");
+    expect((await settled(id)).versions).toHaveLength(2); // the edited one is kept too
+  });
+
+  it("won't edit a post already in Boutiqly's planner, needs Claude on, and keeps the comments if Claude fails", async () => {
+    const id = await approvedPost();
+    await comment(id, "Shorter please");
+    const send = () => t.app.inject({ method: "POST", url: `/api/pieces/${id}/send-edits`, headers: agency.headers });
+    expect((await send()).json().error).toContain("isn't turned on");
+
+    await claudeOn();
+    const [entry] = (await t.app.inject({ method: "POST", url: "/api/calendar", headers: agency.headers, payload: { pieceId: id, channels: ["threads"], date: "2030-10-20", time: "09:00" } })).json().entries;
+    await t.pool.query("UPDATE calendar_entries SET status = 'scheduled' WHERE id = $1", [entry.id]);
+    expect((await send()).json().error).toContain("already scheduled or posted");
+    expect((await settled(id)).comments[0].status).toBe("open");
+
+    await t.pool.query("DELETE FROM calendar_entries");
+    script = [() => new Error("Claude is down")];
+    await send();
+    const after = await settled(id);
+    expect(after.error).toBeTruthy();
+    expect(after.comments[0].status).toBe("open");
+  });
+
+  it("keeps people without access out", async () => {
+    const id = await approvedPost();
+    const other = await signInAs(t.app, people.other);
+    expect((await comment(id, "hi", other.headers)).statusCode).toBe(403);
+    const elsewhere = await signInAs(t.app, { ...people.agency, activeLocation: "loc_other" });
+    expect((await comment(id, "hi", elsewhere.headers)).statusCode).toBe(404);
+  });
+});
+
 describe("plan my calendar", () => {
   async function approvedText(title: string, channels: string[]) {
     const id = (await t.app.inject({ method: "POST", url: "/api/pieces", headers: agency.headers, payload: { kind: "text", title } })).json().piece.id as string;

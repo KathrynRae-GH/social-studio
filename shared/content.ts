@@ -125,3 +125,29 @@ export interface PlanResult {
   note: string; // Claude's one-line summary of the plan
   costCents: number;
 }
+
+// A comment on a post for Claude to act on, and the post's earlier versions.
+export interface CommentView {
+  id: number;
+  by: string;
+  mine: boolean;
+  text: string;
+  status: "open" | "sent" | "done";
+  at: string;
+}
+
+export interface VersionView {
+  id: number;
+  reason: string;
+  by: string;
+  at: string;
+  preview: AssetView | null;
+}
+
+export interface PieceComments {
+  comments: CommentView[];
+  versions: VersionView[];
+  editing: boolean; // Claude is working on the sent comments
+  reply: string; // what Claude said it changed last time
+  error: string | null;
+}
