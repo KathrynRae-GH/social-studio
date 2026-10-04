@@ -44,7 +44,7 @@ export interface ClaudeDeps {
 export interface CallContext {
   brand: Brand;
   userId: string;
-  purpose: "ask_claude" | "tag_asset" | "plan_calendar";
+  purpose: "ask_claude" | "tag_asset" | "plan_calendar" | "strategy";
   refId?: string | null;
 }
 

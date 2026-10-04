@@ -338,6 +338,85 @@ describe("designing with Claude", () => {
   });
 });
 
+describe("strategy", () => {
+  const put = (body: unknown, headers = agency.headers) => t.app.inject({ method: "PUT", url: "/api/strategy", headers, payload: body });
+  const get = async () => (await t.app.inject({ url: "/api/strategy", headers: agency.headers })).json().strategy;
+  async function settled() {
+    for (let i = 0; i < 100; i++) {
+      const s = await get();
+      if (!s.suggesting) return s;
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    throw new Error("The suggestion never finished");
+  }
+  const suggestion = {
+    summary: "Local shoppers who love bold western style.",
+    times: [
+      { channel: "instagram", slots: [{ days: ["tue", "thu"], time: "11:30" }, { days: ["sat"], time: "09:00" }], why: "Lunch scrolling." },
+      { channel: "myspace", slots: [{ days: ["mon"], time: "10:00" }], why: "nope" },
+    ],
+    pillars: [
+      { name: "New Arrivals", description: "Fresh stock", why: "Drives visits", share: 50, examples: ["The fall bandana"] },
+      { name: "Behind the Counter", description: "People and process", why: "Trust", share: 30, examples: [] },
+    ],
+  };
+
+  it("Claude suggests times and pillars with web research; people edit and approve", async () => {
+    await claudeOn();
+    script = [say(JSON.stringify(suggestion))];
+    const start = await t.app.inject({ method: "POST", url: "/api/strategy/suggest", headers: agency.headers });
+    expect(start.statusCode, start.body).toBe(200);
+    const s = await settled();
+    expect(s).toMatchObject({ status: "draft", summary: "Local shoppers who love bold western style.", suggestError: null });
+    expect(Object.keys(s.times)).toEqual(["instagram"]); // unknown networks dropped
+    expect(s.pillars.map((p: { id: string; share: number }) => [p.id, p.share])).toEqual([["new-arrivals", 62], ["behind-the-counter", 38]]);
+    expect(JSON.stringify(calls[0]!.tools)).toContain("web_search");
+    expect((await t.pool.query("SELECT purpose FROM usage_ledger")).rows).toEqual([{ purpose: "strategy" }]);
+
+    expect((await t.app.inject({ method: "POST", url: "/api/strategy/approve", headers: agency.headers })).json().strategy.status).toBe("approved");
+    // Adding a link keeps the approval; changing times needs approving again.
+    expect((await put({ links: [{ channel: "x", url: "https://x.com/shop" }] })).json().strategy.status).toBe("approved");
+    expect((await put({ times: { instagram: { slots: [{ days: ["fri"], time: "18:00" }], why: "" } } })).json().strategy.status).toBe("draft");
+    expect((await put({ times: { instagram: { slots: [{ days: [], time: "25:00" }] } } })).statusCode).toBe(400);
+    expect((await put({ links: [{ channel: "instagram", url: "javascript:alert(1)" }] })).statusCode).toBe(400);
+  });
+
+  it("only the owner side edits; Claude must be on to suggest", async () => {
+    const staff = await signInAs(t.app, people.staff);
+    expect((await put({ pillars: [] }, staff.headers)).statusCode).toBe(403);
+    expect((await t.app.inject({ method: "POST", url: "/api/strategy/suggest", headers: agency.headers })).json().error).toContain("isn't turned on");
+  });
+
+  it("once approved, Claude follows it: pillars on posts, times in the planner", async () => {
+    await claudeOn();
+    await put({ times: { threads: { slots: [{ days: ["wed"], time: "12:15" }], why: "" } }, pillars: [{ name: "Shop News", share: 100 }] });
+    await t.app.inject({ method: "POST", url: "/api/strategy/approve", headers: agency.headers });
+    script = [
+      useTool("design_piece", { kind: "text", title: "Hours", pillar: "shop-news", captions: { threads: { text: "Open late Friday" } } }, "tu_a"),
+      useTool("design_piece", { kind: "text", title: "Other", pillar: "made-up", captions: { threads: { text: "Hi" } } }, "tu_b"),
+      say("Done"),
+    ];
+    await askRaw("Two quick posts");
+    const system = JSON.stringify(calls[0]!.system);
+    expect(system).toContain("This shop's strategy");
+    expect(system).toContain("shop-news: Shop News (target 100%)");
+    expect(JSON.stringify(calls[0]!.messages)).toContain("Content pillar mix");
+    expect((await t.pool.query("SELECT title, pillar FROM pieces ORDER BY created_at")).rows).toEqual([
+      { title: "Hours", pillar: "shop-news" },
+      { title: "Other", pillar: null },
+    ]);
+    expect(JSON.stringify(calls[2]!.messages.at(-1))).toContain("isn't one of the shop's pillars");
+
+    const id = (await t.pool.query("SELECT id FROM pieces WHERE title = 'Hours'")).rows[0].id;
+    await t.app.inject({ method: "POST", url: `/api/pieces/${id}/approve`, headers: agency.headers, payload: { channels: ["threads"] } });
+    script = [say(JSON.stringify({ placements: [], not_placed: [], note: "" }))];
+    await t.app.inject({ method: "POST", url: "/api/calendar/plan", headers: agency.headers, payload: { weeks: 4 } });
+    const sent = JSON.parse((calls.at(-1)!.messages[0]!.content as { text: string }[])[0]!.text);
+    expect(sent.posting_times.threads.slots[0]).toEqual({ days: ["wed"], time: "12:15" });
+    expect(sent.to_place[0].pillar).toBe("shop-news");
+  });
+});
+
 describe("long and cut-off replies", () => {
   const roles = (params: StreamParams) => params.messages.map((m) => m.role);
   const alternates = (rs: string[]) => rs.every((r, i) => i === 0 || r !== rs[i - 1]);

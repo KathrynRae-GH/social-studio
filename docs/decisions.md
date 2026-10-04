@@ -266,3 +266,24 @@ Claude (technical):
 
 - A second row of filters on the Library: Any status, New this week, Suggested, Approved (no date yet), On calendar, Locked, Scheduled, Posted, each with a count. A post can sit at different stages on different networks, so it shows under every stage any of its networks is at. "New this week" means made in the last 7 days.
 - Shipped with migration `0012` (the strategy table and `pieces.pillar`), which the Strategy section coming next will use.
+
+## Oct 4, 2026: Brand → Strategy, posting times and content pillars (Katy)
+
+Katy:
+- A Strategy section on the Brand tab:
+  - **When to post:** one to three day-and-time slots per network, each with a reason.
+  - **Content pillars:** three to six themes with a description, why, a target share and example posts.
+- Claude suggests both when the owner taps the button (not automatically). It uses research now, and real engagement numbers from Boutiqly's social planner once those are confirmed. The owner edits and approves.
+- Social accounts: the ones connected in Boutiqly's social planner show automatically; owners add links for the rest and the website.
+- Once approved:
+  - The times are the defaults for scheduling: Plan my calendar uses them, and "Put it on the calendar yourself" picks the next best slot.
+  - Every new post gets a pillar, and Claude and Plan my calendar keep the mix near the targets.
+
+Claude (technical):
+- Table `strategies` and `pieces.pillar` (migration `0012`).
+- The suggestion is one Claude call (effort high, structured output, web search up to 5 uses), run in the background and metered as `strategy`. It sees the shop's name, time zone and voice, connected accounts and links, the store's product types, recent posts and current pillars. Unknown networks and bad times are dropped; pillar shares are scaled to 100.
+- Pillar ids are stable slugs, so posts keep their pillar when it's renamed.
+- Editing times, pillars or the summary needs approving again; adding links doesn't.
+- Claude gets the approved strategy in its instructions, plus the last 30 days' pillar mix with each message (hidden from the chat). `design_piece` takes `pillar`; an unknown pillar isn't saved and Claude is told the valid ones. Plan my calendar gets `posting_times`, the pillars and each post's pillar.
+- Posts show their pillar on Library cards, and owners can change it in the post's details.
+- Not yet: reading real engagement statistics from Boutiqly's social planner (next, once confirmed on a live account).

@@ -4,12 +4,14 @@ import { AccountsPanel } from "../components/AccountsPanel.tsx";
 import { LookPanel } from "../components/LookPanel.tsx";
 import { ClaudePanel } from "../components/ClaudePanel.tsx";
 import { StorePanel } from "../components/StorePanel.tsx";
+import { StrategyPanel } from "../components/StrategyPanel.tsx";
 
 export function BrandScreen({ me, onTeamChange }: { me: Me; onTeamChange: (team: TeamEntry[]) => void }) {
   return (
     <section>
       <h1>Brand</h1>
       <LookPanel me={me} />
+      <StrategyPanel me={me} />
       <StorePanel me={me} />
       <ClaudePanel me={me} />
       <TeamPanel me={me} onTeamChange={onTeamChange} />

@@ -1,5 +1,6 @@
 // Talking to Boutiqly from inside its frame, and to our own API.
 import type { StoreView } from "../../shared/store.ts";
+import type { StrategyView } from "../../shared/strategy.ts";
 import type { Me, TeamEntry } from "../../shared/roles.ts";
 import type { PieceComments, PlanResult, SendResult, AccountView, AssetDetail, AssetView, FeedbackView, CalendarData, EntryView, IdeaView, PieceView } from "../../shared/content.ts";
 import type { AskEvent, ClaudeStatus, ConversationSummary, ConversationView, ProposalView } from "../../shared/ask.ts";
@@ -105,9 +106,9 @@ export const api = {
     return call<{ asset: AssetView }>("/api/assets", { method: "POST", body: form });
   },
   pieces: () => call<{ pieces: PieceView[] }>("/api/pieces"),
-  createPiece: (input: Partial<{ kind: string; title: string; link: string; assetIds: string[] }>) =>
+  createPiece: (input: Partial<{ kind: string; title: string; link: string; assetIds: string[]; pillar: string | null }>) =>
     call<{ piece: PieceView }>("/api/pieces", { method: "POST", body: JSON.stringify(input) }),
-  updatePiece: (id: string, input: Partial<{ kind: string; title: string; link: string; assetIds: string[]; archived: boolean }>) =>
+  updatePiece: (id: string, input: Partial<{ kind: string; title: string; link: string; assetIds: string[]; archived: boolean; pillar: string | null }>) =>
     call<{ piece: PieceView }>(`/api/pieces/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   setCaption: (id: string, channel: string, input: { text: string; altText: string; status: "draft" | "final" }) =>
     call<{ piece: PieceView }>(`/api/pieces/${id}/captions/${channel}`, { method: "PUT", body: JSON.stringify(input) }),
@@ -178,6 +179,13 @@ export const api = {
   connectStore: (url: string) => call<{ store: StoreView | null }>("/api/store", { method: "PUT", body: JSON.stringify({ url }) }),
   refreshStore: () => call<{ store: StoreView | null }>("/api/store/refresh", { method: "POST", body: "{}" }),
   disconnectStore: () => call<{ store: null }>("/api/store", { method: "DELETE" }),
+
+  // Strategy
+  strategy: () => call<{ strategy: StrategyView }>("/api/strategy"),
+  saveStrategy: (input: Partial<Pick<StrategyView, "links" | "times" | "pillars" | "summary">>) =>
+    call<{ strategy: StrategyView }>("/api/strategy", { method: "PUT", body: JSON.stringify(input) }),
+  approveStrategy: () => call<{ strategy: StrategyView }>("/api/strategy/approve", { method: "POST", body: "{}" }),
+  suggestStrategy: () => call<{ strategy: StrategyView }>("/api/strategy/suggest", { method: "POST", body: "{}" }),
 
   // Ideas
   ideas: () => call<{ ideas: IdeaView[] }>("/api/ideas"),

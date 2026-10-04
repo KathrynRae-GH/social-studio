@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AssetView, CaptionView, PieceView } from "../../../shared/content.ts";
 import { KIND_LABELS, ROUTE_LABELS, channelsFor, type Kind } from "../../../shared/channels.ts";
 import { api } from "../boutiqly.ts";
@@ -6,6 +6,7 @@ import { PostPreview } from "../components/PostPreview.tsx";
 import { Verdict } from "../components/Verdict.tsx";
 import { Comments } from "../components/Comments.tsx";
 import { ErrorNote, Thumb, addDays, friendlyDate, friendlyTime, todayIn } from "../components/bits.tsx";
+import { DAYS, type StrategyView } from "../../../shared/strategy.ts";
 
 const KINDS = Object.keys(KIND_LABELS) as Kind[];
 const NEEDS_LINK: Kind[] = ["pin", "google_update"];
@@ -58,6 +59,33 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
   const tomorrow = addDays(todayIn(timezone), 1);
   const [when, setWhen] = useState({ date: tomorrow, time: "09:00" });
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pillar, setPillar] = useState<string | null>(initial?.pillar ?? null);
+  // The shop's approved strategy: pillars to pick from, and each network's best time.
+  const [strategy, setStrategy] = useState<StrategyView | null>(null);
+  useEffect(() => {
+    api.strategy().then((r) => setStrategy(r.strategy.status === "approved" ? r.strategy : null), () => {});
+  }, []);
+
+  function pick(id: string, on: boolean) {
+    // The first network picked sets the date and time to its next best slot.
+    const slot = on && picked.size === 0 ? strategy?.times[id]?.slots[0] : undefined;
+    if (slot) {
+      for (let d = 1; d <= 7; d++) {
+        const date = addDays(todayIn(timezone), d);
+        const day = DAYS[(new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7]!;
+        if (slot.days.includes(day)) {
+          setWhen({ date, time: slot.time });
+          break;
+        }
+      }
+    }
+    setPicked((p) => {
+      const n = new Set(p);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+  }
 
   const activeChannel = channels.find((c) => c.id === active) ?? channels[0];
   const current = (activeChannel && captions[activeChannel.id]) || emptyCaption;
@@ -72,6 +100,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
     setKind(p.kind);
     setTitle(p.title);
     setLink(p.link);
+    setPillar(p.pillar);
     setFiles(p.assets);
     setCaptions(p.captions);
     setDirty(new Set());
@@ -140,7 +169,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
     setMessage("");
     setBusy("Saving…");
     try {
-      const fields = { kind, title, link, assetIds: files.map((f) => f.id) };
+      const fields = { kind, title, link, assetIds: files.map((f) => f.id), pillar };
       let saved = piece ? (await api.updatePiece(piece.id, fields)).piece : (await api.createPiece(fields)).piece;
       for (const ch of dirty) {
         const c = captions[ch];
@@ -319,6 +348,15 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
           </label>
         </div>
         <p className="muted small">{KIND_HELP[kind]}</p>
+        {(strategy?.pillars.length ?? 0) > 0 && (
+          <label className="field">
+            <span>Content pillar</span>
+            <select value={pillar ?? ""} onChange={(e) => { setPillar(e.target.value || null); setFieldsDirty(true); }}>
+              <option value="">None</option>
+              {strategy!.pillars.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+        )}
 
         {kind !== "text" && (
           <section className="files">
@@ -358,7 +396,7 @@ export function PieceEditor({ piece: initial, timezone, onClose, onSaved }: Prop
                   <input
                     type="checkbox"
                     checked={picked.has(id)}
-                    onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(id); else n.delete(id); return n; })}
+                    onChange={(e) => pick(id, e.target.checked)}
                   />
                   {channels.find((c) => c.id === id)?.name ?? id}
                 </label>

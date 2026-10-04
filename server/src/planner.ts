@@ -11,6 +11,7 @@ import { callClaude, type ClaudeDeps } from "./claude/client.ts";
 import { addEntries, brandTimezone, type CalendarDeps } from "./calendar.ts";
 import { tryWithLock } from "./jobs.ts";
 import { getStyleSet } from "./styles.ts";
+import { approvedStrategy } from "./strategy.ts";
 import { channel, KIND_LABELS, type Kind } from "../../shared/channels.ts";
 import { layoutKind, LAYOUT_KINDS } from "../../shared/design.ts";
 import { utcToZoned, zonedToUtc } from "../../shared/time.ts";
@@ -64,7 +65,8 @@ How to plan well:
 - Never put two posts on the same network on the same day. Keep a few hours between posts on different networks the same day, unless it's the same post going out to several networks together (that's fine, and usually good).
 - Mix it up: don't run the same kind of post (graphics-led, single photo, several photos; post, carousel, Story, text) back to back on a network.
 - Timely things go first: new arrivals, launches, restocks and anything tied to a date or season mentioned in the post go early, or near that date. Evergreen posts fill the gaps.
-- Use sensible local times for each network: Instagram and Facebook late morning or early evening; LinkedIn weekday mornings; Threads, Bluesky and X late morning; Pinterest evenings and weekends; Google Business Profile weekday mornings; Stories mid-morning or lunchtime.
+- If the shop has posting times for a network (posting_times), use exactly those days and times for it. Otherwise use sensible local times: Instagram and Facebook late morning or early evening; LinkedIn weekday mornings; Threads, Bluesky and X late morning; Pinterest evenings and weekends; Google Business Profile weekday mornings; Stories mid-morning or lunchtime.
+- If the shop has content pillars, balance them over each week toward their target shares, so no theme bunches up.
 - Follow anything the shop's notes say about timing or days.
 - Use only the piece ids and networks given. If something can't fit (the window is too full), list it in not_placed with a short reason instead of overcrowding.`;
 
@@ -117,6 +119,7 @@ export async function planCalendar(deps: PlannerDeps, viewer: Viewer, input: { w
 
     const captionRows = await db.select().from(captions).where(inArray(captions.pieceId, candidates.map((c) => c.piece.id)));
     const style = await getStyleSet(db, viewer);
+    const strategy = await approvedStrategy(db, brand.id);
     const layoutLabel = (layout: string | undefined) => {
       const k = layoutKind(layout);
       return k ? LAYOUT_KINDS[k]!.label : undefined;
@@ -126,6 +129,8 @@ export async function planCalendar(deps: PlannerDeps, viewer: Viewer, input: { w
       time_zone: tz,
       window: { from, to },
       shop_notes: [style.vibe, style.dosDonts].filter(Boolean).join("\n") || "(none)",
+      posting_times: strategy?.times ?? {},
+      pillars: (strategy?.pillars ?? []).map((p) => ({ id: p.id, name: p.name, target_share: p.share })),
       already_on_calendar: all.map(({ e, title, kind }) => ({
         ...utcToZoned(e.scheduledAt, tz),
         network: e.channel,
@@ -140,6 +145,7 @@ export async function planCalendar(deps: PlannerDeps, viewer: Viewer, input: { w
           title: piece.title,
           kind: KIND_LABELS[piece.kind as Kind] ?? piece.kind,
           look: layoutLabel(piece.design?.layout),
+          pillar: piece.pillar ?? undefined,
           networks: channels,
           caption_start: caption.slice(0, 280),
           approved: piece.approvedAt!.toISOString().slice(0, 10),

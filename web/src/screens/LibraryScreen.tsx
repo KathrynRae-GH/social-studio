@@ -37,6 +37,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
   const [pieces, setPieces] = useState<PieceView[] | null>(null);
   const [filter, setFilter] = useState<Kind | "all">("all");
   const [stage, setStage] = useState<Stage>("all");
+  const [pillarNames, setPillarNames] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<PieceView | null | "new">(null);
   const [error, setError] = useState("");
 
@@ -49,6 +50,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
   }
   useEffect(() => {
     void load();
+    api.strategy().then((r) => setPillarNames(Object.fromEntries(r.strategy.pillars.map((p) => [p.id, p.name]))), () => {});
   }, []);
 
   const shown = (pieces ?? []).filter((p) => (filter === "all" || p.kind === filter) && atStage(p, stage));
@@ -95,6 +97,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
               <span className="muted small">
                 {KIND_LABELS[p.kind]}
                 {p.assets.length > 1 ? ` · ${p.assets.length} files` : ""}
+                {p.pillar && pillarNames[p.pillar] ? ` · ${pillarNames[p.pillar]}` : ""}
               </span>
               <span className="chips">
                 {!p.approval && <span className="status-chip status-suggested">Suggested</span>}

@@ -114,6 +114,7 @@ export interface PieceInput {
   link?: unknown;
   assetIds?: unknown;
   archived?: unknown;
+  pillar?: unknown;
 }
 
 function cleanText(value: unknown, max: number): string | undefined {
@@ -131,6 +132,7 @@ export async function createPiece(db: Db, viewer: Viewer, input: PieceInput): Pr
       title: cleanText(input.title, 200) ?? "",
       link: cleanText(input.link, 2048) ?? "",
       assetIds: await ownAssetIds(db, brand, input.assetIds),
+      pillar: typeof input.pillar === "string" && /^[a-z0-9-]{1,48}$/.test(input.pillar) ? input.pillar : null,
       createdBy: viewer.ctx.userId,
     })
     .returning();
@@ -152,6 +154,7 @@ export async function updatePiece(db: Db, viewer: Viewer, pieceId: string, input
   if (link !== undefined) changes.link = link;
   if (input.assetIds !== undefined) changes.assetIds = await ownAssetIds(db, brand, input.assetIds);
   if (typeof input.archived === "boolean") changes.archived = input.archived;
+  if (input.pillar !== undefined) changes.pillar = typeof input.pillar === "string" && /^[a-z0-9-]{1,48}$/.test(input.pillar) ? input.pillar : null;
   await db.update(pieces).set(changes).where(and(eq(pieces.id, pieceId), eq(pieces.brandId, brand.id)));
   await audit(db, viewer, "piece.update", { pieceId, fields: Object.keys(changes).filter((k) => k !== "updatedAt") });
   return getPiece(db, viewer, pieceId);
