@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { PieceView } from "../../../shared/content.ts";
 import { KIND_LABELS, type Kind } from "../../../shared/channels.ts";
 import { api } from "../boutiqly.ts";
-import { ErrorNote, StatusChip, Thumb, channelName } from "../components/bits.tsx";
+import { ErrorNote, StatusChip, Thumb, cardProps, channelName } from "../components/bits.tsx";
 import { PieceEditor } from "./PieceEditor.tsx";
 
 const FILTERS: (Kind | "all")[] = ["all", "post", "carousel", "story", "story_set", "reel", "text", "short", "pin", "google_update"];
@@ -52,7 +52,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
 
       <div className="piece-grid">
         {shown.map((p) => (
-          <button key={p.id} className="piece-card" onClick={() => setEditing(p)}>
+          <div key={p.id} className="piece-card" {...cardProps(() => setEditing(p))}>
             <Thumb asset={p.assets[0]} className="piece-thumb" />
             <div className="piece-body">
               <strong>{p.title || KIND_LABELS[p.kind]}</strong>
@@ -73,7 +73,7 @@ export function LibraryScreen({ timezone, shopName = "" }: { timezone: string; s
                 })}
               </span>
             </div>
-          </button>
+          </div>
         ))}
       </div>
 

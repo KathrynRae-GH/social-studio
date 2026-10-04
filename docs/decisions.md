@@ -238,3 +238,7 @@ Claude (technical):
 - The engine still sets a page color and a text color (the lightest color, and the most readable color on it, or near-black/white if none reads well). `--brand-accent` and `--brand-highlight` now come from the primaries first, so older designs keep rendering. New variables `--brand-primary-1..3`.
 - Claude's instructions list every color (with PRIMARY marked) and a readable-pairs table worked out with WCAG contrast: 4.5:1 for body text, 3:1 for big headings, with white and black included. Claude is told every color can be used anywhere, to vary which color leads, to give a primary a prominent place in every post, and to put text only on readable pairs.
 - Ticking primaries changes the look, so it needs approving again, like any other change to the look.
+
+## Oct 4, 2026: Library and Assets tiles are no longer buttons (technical)
+
+- The first fix for the white bar above some Library pictures (flex layout on the button) didn't hold in Katy's browser. Buttons center their content, and some browsers (Safari especially) ignore layout styles on buttons. Tiles are now plain blocks with `role="button"`. They still open on click, Enter or Space, and show a green focus ring.

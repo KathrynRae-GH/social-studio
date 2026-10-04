@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { AssetView } from "../../../shared/content.ts";
 import { STATUS_LABELS, channel, type EntryStatus } from "../../../shared/channels.ts";
 
@@ -54,4 +55,20 @@ export function todayIn(timeZone: string): string {
 
 export function ErrorNote({ message }: { message: string }) {
   return message ? <p className="error">{message}</p> : null;
+}
+
+// Tiles are plain blocks (a <button> centers its content, which left a gap
+// above the picture in some browsers); this keeps them usable from the keyboard.
+export function cardProps(open: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
+      }
+    },
+  };
 }
